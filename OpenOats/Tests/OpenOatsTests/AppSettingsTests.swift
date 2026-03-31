@@ -8,23 +8,29 @@ final class AppSettingsTests: XCTestCase {
 
     func testLLMProviderAllCases() {
         let cases = LLMProvider.allCases
-        XCTAssertEqual(cases.count, 4)
+        XCTAssertEqual(cases.count, 6)
         XCTAssertTrue(cases.contains(.openRouter))
+        XCTAssertTrue(cases.contains(.gemini))
         XCTAssertTrue(cases.contains(.ollama))
+        XCTAssertTrue(cases.contains(.lmStudio))
         XCTAssertTrue(cases.contains(.openAICompatible))
         XCTAssertTrue(cases.contains(.mlx))
     }
 
     func testLLMProviderDisplayNames() {
         XCTAssertEqual(LLMProvider.openRouter.displayName, "OpenRouter")
+        XCTAssertEqual(LLMProvider.gemini.displayName, "Gemini")
         XCTAssertEqual(LLMProvider.ollama.displayName, "Ollama")
+        XCTAssertEqual(LLMProvider.lmStudio.displayName, "LM Studio")
         XCTAssertEqual(LLMProvider.openAICompatible.displayName, "OpenAI Compatible")
         XCTAssertEqual(LLMProvider.mlx.displayName, "MLX")
     }
 
     func testLLMProviderRawValues() {
         XCTAssertEqual(LLMProvider.openRouter.rawValue, "openRouter")
+        XCTAssertEqual(LLMProvider.gemini.rawValue, "gemini")
         XCTAssertEqual(LLMProvider.ollama.rawValue, "ollama")
+        XCTAssertEqual(LLMProvider.lmStudio.rawValue, "lmStudio")
         XCTAssertEqual(LLMProvider.openAICompatible.rawValue, "openAICompatible")
         XCTAssertEqual(LLMProvider.mlx.rawValue, "mlx")
     }
@@ -96,12 +102,13 @@ final class AppSettingsTests: XCTestCase {
 
     func testEmbeddingProviderAllCases() {
         let cases = EmbeddingProvider.allCases
-        XCTAssertEqual(cases.count, 3)
+        XCTAssertEqual(cases.count, 4)
     }
 
     func testEmbeddingProviderDisplayNames() {
         XCTAssertEqual(EmbeddingProvider.voyageAI.displayName, "Voyage AI")
         XCTAssertEqual(EmbeddingProvider.ollama.displayName, "Ollama")
+        XCTAssertEqual(EmbeddingProvider.lmStudio.displayName, "LM Studio")
         XCTAssertEqual(EmbeddingProvider.openAICompatible.displayName, "OpenAI Compatible")
     }
 

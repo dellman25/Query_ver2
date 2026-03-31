@@ -75,6 +75,12 @@ final class TranscriptionEngine {
         set { withMutation(keyPath: \.lastError) { _lastError = newValue } }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _sessionWarnings: [SessionWarning] = []
+    var sessionWarnings: [SessionWarning] {
+        get { access(keyPath: \.sessionWarnings); return _sessionWarnings }
+        set { withMutation(keyPath: \.sessionWarnings) { _sessionWarnings = newValue } }
+    }
+
     @ObservationIgnored nonisolated(unsafe) private var _needsModelDownload = false
     var needsModelDownload: Bool {
         get { access(keyPath: \.needsModelDownload); return _needsModelDownload }
@@ -159,8 +165,44 @@ final class TranscriptionEngine {
     private var defaultOutputDeviceListenerBlock: AudioObjectPropertyListenerBlock?
     private var micRestartTask: Task<Void, Never>?
     private var sysRestartTask: Task<Void, Never>?
+    private var systemHealthCheckTask: Task<Void, Never>?
     private var pendingMicDeviceID: AudioDeviceID?
     private var pendingSystemAudioRestart = false
+    private var micPermissionState: CapturePermissionState = .unknown
+    private var systemPermissionState: CapturePermissionState = .unknown
+    private var micHealthState: CaptureHealthState = .idle
+    private var systemHealthState: CaptureHealthState = .idle
+    private var micStatusDetail: String?
+    private var systemStatusDetail: String?
+    private var didRetrySystemAudio = false
+
+    var micCaptureStatus: LiveCaptureStatus {
+        CaptureStatusResolver.resolve(
+            source: .microphone,
+            isRunning: isRunning,
+            permission: micPermissionState,
+            requestedHealth: micHealthState,
+            hasCapturedFrames: micCapture.hasCapturedFrames,
+            lastActivityAt: micCapture.lastBufferAt,
+            audioLevel: micCapture.audioLevel,
+            detail: micStatusDetail ?? micCapture.captureError,
+            didRetry: false
+        )
+    }
+
+    var systemAudioCaptureStatus: LiveCaptureStatus {
+        CaptureStatusResolver.resolve(
+            source: .systemAudio,
+            isRunning: isRunning,
+            permission: systemPermissionState,
+            requestedHealth: systemHealthState,
+            hasCapturedFrames: systemCapture.hasCapturedFrames,
+            lastActivityAt: systemCapture.lastBufferAt,
+            audioLevel: systemCapture.audioLevel,
+            detail: systemStatusDetail,
+            didRetry: didRetrySystemAudio
+        )
+    }
 
     init(transcriptStore: TranscriptStore, settings: AppSettings, mode: Mode = .live) {
         self.transcriptStore = transcriptStore
@@ -191,6 +233,14 @@ final class TranscriptionEngine {
         diagLog("[ENGINE-0] start() called, isRunning=\(isRunning)")
         guard !isRunning else { return }
         lastError = nil
+        sessionWarnings = []
+        micPermissionState = .unknown
+        systemPermissionState = .unknown
+        micHealthState = .starting
+        systemHealthState = .starting
+        micStatusDetail = nil
+        systemStatusDetail = nil
+        didRetrySystemAudio = false
         refreshModelAvailability()
 
         if case .scripted(let scriptedUtterances) = mode {
@@ -218,6 +268,7 @@ final class TranscriptionEngine {
         }
 
         guard await ensureMicrophonePermission() else { return }
+        micPermissionState = .granted
         let modeLabel: String = {
             switch mode {
             case .live: "live"
@@ -358,6 +409,8 @@ final class TranscriptionEngine {
         // Check for immediate mic capture failure
         if let micError = micCapture.captureError {
             diagLog("[ENGINE-3-FAIL] mic capture error: \(micError)")
+            micHealthState = .degraded
+            micStatusDetail = micError
             lastError = micError
         }
 
@@ -381,6 +434,8 @@ final class TranscriptionEngine {
                     )
                 } else {
                     diagLog("[ENGINE-HEALTH] no mic audio after 5s")
+                    self.micHealthState = .degraded
+                    self.micStatusDetail = "Microphone is not producing audio. Check your input device in System Settings."
                     self.lastError = "Microphone is not producing audio. Check your input device in System Settings."
                 }
             }
@@ -509,19 +564,31 @@ final class TranscriptionEngine {
     private func ensureMicrophonePermission() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
+            micPermissionState = .granted
             return true
         case .notDetermined:
             let granted = await AVCaptureDevice.requestAccess(for: .audio)
             if !granted {
+                micPermissionState = .denied
+                micHealthState = .degraded
+                micStatusDetail = "Enable microphone access for Query in System Settings."
                 lastError = "Microphone access denied. Enable it in System Settings > Privacy & Security > Microphone."
                 assetStatus = "Ready"
+            } else {
+                micPermissionState = .granted
             }
             return granted
         case .denied, .restricted:
+            micPermissionState = .denied
+            micHealthState = .degraded
+            micStatusDetail = "Microphone access is disabled in System Settings."
             lastError = "Microphone access is disabled. Enable it in System Settings > Privacy & Security > Microphone."
             assetStatus = "Ready"
             return false
         @unknown default:
+            micPermissionState = .unknown
+            micHealthState = .degraded
+            micStatusDetail = "Unable to verify microphone permission."
             lastError = "Unable to verify microphone permission."
             assetStatus = "Ready"
             return false
@@ -534,6 +601,7 @@ final class TranscriptionEngine {
             assetStatus = "Ready"
             transcriptStore.volatileYouText = ""
             transcriptStore.volatileThemText = ""
+            resetCaptureRuntimeState()
             return
         }
 
@@ -541,8 +609,10 @@ final class TranscriptionEngine {
         removeDefaultOutputDeviceListener()
         micRestartTask?.cancel()
         sysRestartTask?.cancel()
+        systemHealthCheckTask?.cancel()
         micRestartTask = nil
         sysRestartTask = nil
+        systemHealthCheckTask = nil
         pendingMicDeviceID = nil
         pendingSystemAudioRestart = false
         micKeepAliveTask?.cancel()
@@ -573,6 +643,7 @@ final class TranscriptionEngine {
         transcriptStore.volatileThemText = ""
         isRunning = false
         assetStatus = "Ready"
+        resetCaptureRuntimeState()
     }
 
     func stop() {
@@ -581,6 +652,7 @@ final class TranscriptionEngine {
             assetStatus = "Ready"
             transcriptStore.volatileYouText = ""
             transcriptStore.volatileThemText = ""
+            resetCaptureRuntimeState()
             return
         }
 
@@ -588,8 +660,10 @@ final class TranscriptionEngine {
         removeDefaultOutputDeviceListener()
         micRestartTask?.cancel()
         sysRestartTask?.cancel()
+        systemHealthCheckTask?.cancel()
         micRestartTask = nil
         sysRestartTask = nil
+        systemHealthCheckTask = nil
         pendingMicDeviceID = nil
         pendingSystemAudioRestart = false
         micTask?.cancel()
@@ -607,6 +681,7 @@ final class TranscriptionEngine {
         transcriptStore.volatileThemText = ""
         isRunning = false
         assetStatus = "Ready"
+        resetCaptureRuntimeState()
     }
 
     private func performMicRestart(inputDeviceID: AudioDeviceID) async {
@@ -637,6 +712,8 @@ final class TranscriptionEngine {
 
         micTask = nil
         micCapture.stop()
+        micHealthState = .starting
+        micStatusDetail = nil
         startMicStream(
             locale: settings.locale,
             vadManager: vadManager,
@@ -682,6 +759,10 @@ final class TranscriptionEngine {
 
         sysTask = nil
         await systemCapture.stop()
+        systemHealthState = .starting
+        systemStatusDetail = didRetrySystemAudio
+            ? "Retrying remote audio capture..."
+            : "Restarting system audio capture..."
         await startSystemAudioStream(locale: settings.locale, vadManager: vadManager)
 
         diagLog("[ENGINE-SYS-SWAP] system audio stream restarted")
@@ -729,10 +810,15 @@ final class TranscriptionEngine {
         vadManager: VadManager
     ) async {
         diagLog("[ENGINE-4] starting system audio capture...")
+        systemHealthState = .starting
+        systemStatusDetail = didRetrySystemAudio
+            ? "Retrying remote audio capture..."
+            : "Starting system audio capture..."
 
         let sysStreams: SystemAudioCapture.CaptureStreams
         do {
             sysStreams = try await systemCapture.bufferStream()
+            systemPermissionState = .granted
             diagLog("[ENGINE-5] system audio capture started OK")
             // #region agent log
             agentDebugLog(
@@ -745,6 +831,10 @@ final class TranscriptionEngine {
             // #endregion
             clearSystemAudioErrorIfPresent()
         } catch {
+            if case SystemAudioCapture.CaptureError.tapCreationFailed = error {
+                systemPermissionState = .denied
+            }
+            markSystemAudioUnavailable(error.localizedDescription)
             let msg = "Failed to start system audio: \(error.localizedDescription)"
             diagLog("[ENGINE-5-FAIL] \(msg)")
             // #region agent log
@@ -824,6 +914,7 @@ final class TranscriptionEngine {
                 }
             }
         ) else {
+            markSystemAudioUnavailable("Failed to create the system-audio transcriber. Try restarting.")
             lastError = "Failed to create the system-audio transcriber. Try restarting."
             return
         }
@@ -831,6 +922,7 @@ final class TranscriptionEngine {
         sysTask = Task.detached {
             await sysTranscriber.run(stream: sysStream)
         }
+        scheduleSystemAudioHealthCheck()
     }
 
     private func makeTranscriber(
@@ -900,6 +992,50 @@ final class TranscriptionEngine {
         return output
     }
 
+    private func scheduleSystemAudioHealthCheck() {
+        systemHealthCheckTask?.cancel()
+        systemHealthCheckTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard let self, self.isRunning else { return }
+
+            let hasUsableRemoteAudio = self.systemCapture.hasCapturedFrames
+                && (self.systemCapture.lastBufferAt != nil || self.systemCapture.audioLevel > 0.01)
+            guard !hasUsableRemoteAudio else {
+                self.systemHealthState = .active
+                self.systemStatusDetail = "Remote audio capture is live."
+                return
+            }
+
+            if !self.didRetrySystemAudio {
+                self.didRetrySystemAudio = true
+                self.systemStatusDetail = "No remote audio detected. Retrying system capture once."
+                await self.performSystemAudioRestart()
+                return
+            }
+
+            self.markSystemAudioUnavailable(
+                "Remote transcription unavailable. Check System Audio Recording permission and your current output device."
+            )
+            self.lastError = "Remote transcription unavailable. Check System Audio Recording permission and your current output device."
+        }
+    }
+
+    private func markSystemAudioUnavailable(_ detail: String) {
+        systemHealthState = .degraded
+        systemStatusDetail = detail
+        appendSessionWarning(
+            SessionWarning(
+                code: "remote-transcription-unavailable",
+                message: "Remote transcription was unavailable for part of this meeting."
+            )
+        )
+    }
+
+    private func appendSessionWarning(_ warning: SessionWarning) {
+        guard !sessionWarnings.contains(warning) else { return }
+        sessionWarnings.append(warning)
+    }
+
     private func localeMismatchMessage(
         for locale: Locale,
         transcriptionModel: TranscriptionModel
@@ -923,9 +1059,20 @@ final class TranscriptionEngine {
     private func clearSystemAudioErrorIfPresent() {
         guard let lastError else { return }
         if lastError.localizedCaseInsensitiveContains("system audio") ||
-            lastError.localizedCaseInsensitiveContains("audio output device") {
+            lastError.localizedCaseInsensitiveContains("audio output device") ||
+            lastError.localizedCaseInsensitiveContains("remote transcription unavailable") {
             self.lastError = nil
         }
+    }
+
+    private func resetCaptureRuntimeState() {
+        micPermissionState = .unknown
+        systemPermissionState = .unknown
+        micHealthState = .idle
+        systemHealthState = .idle
+        micStatusDetail = nil
+        systemStatusDetail = nil
+        didRetrySystemAudio = false
     }
 
     // MARK: - Download Progress Detail

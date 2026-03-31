@@ -6,6 +6,7 @@ struct GuidancePanelView: View {
     let notes: [BANote]
     let interviewTags: [InterviewTag]
     let screenshots: [ScreenshotCapture]
+    let aiStatus: AIStatusSnapshot
 
     @State private var now = Date()
 
@@ -30,6 +31,7 @@ struct GuidancePanelView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     coverageSection
                     guidanceSection
+                    aiSection
                 }
                 .padding(16)
             }
@@ -109,7 +111,7 @@ struct GuidancePanelView: View {
 
     private var guidanceSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Questioning Mode")
+            Text("Local Guidance")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
 
@@ -197,7 +199,7 @@ struct GuidancePanelView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Guidance will adapt as transcript, notes, tags, and screenshots accumulate.")
+            Text("Local guidance will adapt as transcript, notes, tags, and screenshots accumulate.")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -212,6 +214,75 @@ struct GuidancePanelView: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(Color.orange.opacity(0.1), lineWidth: 1)
         )
+    }
+
+    private var aiSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Cloud AI")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    modeChip(title: "Provider", value: aiStatus.providerName, tint: aiStatusTint)
+                    if !aiStatus.modelName.isEmpty {
+                        modeChip(title: "Model", value: aiStatus.modelName, tint: .secondary)
+                    }
+                }
+
+                Text(aiStatus.detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let transcriptWarning = aiStatus.transcriptWarning {
+                    labelRow("Transcript", text: transcriptWarning, tint: .orange)
+                }
+
+                labelRow("KB", text: aiStatus.knowledgeBaseReady ? "Indexed" : "Not ready", tint: aiStatus.knowledgeBaseReady ? .green : .yellow)
+
+                if let lastError = aiStatus.lastError {
+                    labelRow("Last error", text: lastError, tint: .red)
+                } else if let lastSuccessAt = aiStatus.lastSuccessAt {
+                    labelRow("Last success", text: RelativeDateTimeFormatter().localizedString(for: lastSuccessAt, relativeTo: now), tint: .green)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(aiStatusTint.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(aiStatusTint.opacity(0.14), lineWidth: 1)
+            )
+        }
+    }
+
+    private func labelRow(_ title: String, text: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(tint)
+            Text(text)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var aiStatusTint: Color {
+        switch aiStatus.state {
+        case .ready:
+            return .green
+        case .limited:
+            return .yellow
+        case .error:
+            return .red
+        case .disabled:
+            return .secondary
+        }
     }
 
     private func modeChip(title: String, value: String, tint: Color) -> some View {

@@ -9,10 +9,14 @@ import os
 /// Captures system output audio via a Core Audio process tap.
 final class SystemAudioCapture: @unchecked Sendable {
     private let _audioLevel = AudioLevel()
+    private let _hasCapturedFrames = SyncBool()
+    private let _lastBufferAt = SyncDate()
     private let _didLogFirstBuffer = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
 
     /// Thread-safe audio level (0…1) from the system audio stream.
     var audioLevel: Float { _audioLevel.value }
+    var hasCapturedFrames: Bool { _hasCapturedFrames.value }
+    var lastBufferAt: Date? { _lastBufferAt.value }
 
     private let _aggregateDeviceID = OSAllocatedUnfairLock<AudioObjectID>(
         uncheckedState: AudioObjectID(kAudioObjectUnknown)
@@ -35,6 +39,8 @@ final class SystemAudioCapture: @unchecked Sendable {
 
     func bufferStream(outputDeviceID: AudioDeviceID? = nil) async throws -> CaptureStreams {
         await stop()
+        _hasCapturedFrames.value = false
+        _lastBufferAt.value = nil
 
         let sysStream = AsyncStream<AVAudioPCMBuffer> { continuation in
             self._sysContinuation.withLock { $0 = continuation }
@@ -148,6 +154,8 @@ final class SystemAudioCapture: @unchecked Sendable {
     func stop() async {
         finishStream()
         _audioLevel.value = 0
+        _hasCapturedFrames.value = false
+        _lastBufferAt.value = nil
 
         let aggregateDeviceID = _aggregateDeviceID.withLock { state -> AudioObjectID in
             let current = state
@@ -226,6 +234,8 @@ final class SystemAudioCapture: @unchecked Sendable {
             vDSP_rmsqv(channelData[0], 1, &rms, vDSP_Length(pcmBuffer.frameLength))
             _audioLevel.value = min(rms * 25, 1.0)
         }
+        _hasCapturedFrames.value = true
+        _lastBufferAt.value = Date()
 
         let shouldLogFirstBuffer = _didLogFirstBuffer.withLock { didLog in
             if didLog { return false }

@@ -398,6 +398,10 @@ struct NotesView: View {
             VStack(spacing: 0) {
                 detailToolbar(controller: controller, state: state)
                 Divider()
+                if let warning = state.sessionWarnings.first {
+                    sessionWarningBanner(warning)
+                    Divider()
+                }
                 detailBody(controller: controller, state: state, sessionID: sessionID)
             }
             .background {
@@ -425,6 +429,20 @@ struct NotesView: View {
         case inProgress
         case partiallyCleaned
         case cleaned
+    }
+
+    private func sessionWarningBanner(_ warning: SessionWarning) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(warning.message)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.06))
     }
 
     private func cleanupState(from status: CleanupStatus, transcript: [SessionRecord]) -> CleanupState {

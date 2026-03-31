@@ -9,15 +9,16 @@ struct MiniBarContent: View {
 
     var body: some View {
         // Tiny pill: mini waveform + status dot
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             MiniWaveformView(level: state.audioLevel)
                 .frame(width: 22, height: 10)
 
-            Circle()
-                .fill(state.isGenerating ? Color.orange : Color.green)
-                .frame(width: 5, height: 5)
-                .scaleEffect(1.0 + CGFloat(state.audioLevel) * 0.3)
-                .animation(.easeOut(duration: 0.1), value: state.audioLevel)
+            VStack(spacing: 2) {
+                HStack(spacing: 2) {
+                    statusDot(state.micCaptureStatus, activeColor: state.isGenerating ? .orange : .green)
+                    statusDot(state.systemAudioCaptureStatus, activeColor: .blue)
+                }
+            }
         }
         .frame(width: 40, height: 18)
         .background(.ultraThinMaterial)
@@ -25,6 +26,27 @@ struct MiniBarContent: View {
         .contentShape(Capsule())
         .onTapGesture {
             state.onTap()
+        }
+    }
+
+    private func statusDot(_ status: LiveCaptureStatus, activeColor: Color) -> some View {
+        Circle()
+            .fill(color(for: status, activeColor: activeColor))
+            .frame(width: 5, height: 5)
+            .scaleEffect(status.health == .active ? 1.0 + CGFloat(state.audioLevel) * 0.3 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: state.audioLevel)
+    }
+
+    private func color(for status: LiveCaptureStatus, activeColor: Color) -> Color {
+        switch status.health {
+        case .active:
+            activeColor
+        case .degraded:
+            .red
+        case .starting:
+            .yellow
+        case .idle:
+            Color.primary.opacity(0.12)
         }
     }
 }

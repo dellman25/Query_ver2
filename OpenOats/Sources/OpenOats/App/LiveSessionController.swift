@@ -27,6 +27,11 @@ struct LiveSessionState {
     var modelDisplayName: String = ""
     var showLiveTranscript: Bool = true
     var isMicMuted: Bool = false
+    var micCaptureStatus: LiveCaptureStatus = .idle(.microphone)
+    var systemAudioCaptureStatus: LiveCaptureStatus = .idle(.systemAudio)
+    var sessionWarnings: [SessionWarning] = []
+    var aiStatus: AIStatusSnapshot = .disabled
+    var screenshotVisibilityEnabled: Bool = false
 }
 
 /// Owns all live session side effects: polling, utterance ingestion,
@@ -46,6 +51,8 @@ final class LiveSessionController {
     private var observedAudioLevel: Float = 0
     private var observedSuggestions: [Suggestion] = []
     private var observedIsGenerating = false
+    private var observedMicCaptureStatus = LiveCaptureStatus.idle(.microphone)
+    private var observedSystemCaptureStatus = LiveCaptureStatus.idle(.systemAudio)
     private var observedKBFolderPath = ""
     private var observedNotesFolderPath = ""
     private var observedVoyageApiKey = ""
@@ -417,6 +424,7 @@ final class LiveSessionController {
             guard let locale = settings?.transcriptionLocale, !locale.isEmpty else { return nil }
             return locale
         }()
+        let sessionWarnings = coordinator.transcriptionEngine?.sessionWarnings ?? []
 
         // 4. Finalize: closes file handle, backfills refined text, writes session.json
         await coordinator.sessionRepository.finalizeSession(
@@ -429,7 +437,8 @@ final class LiveSessionController {
                 meetingApp: meetingAppName,
                 engine: engineName,
                 templateSnapshot: coordinator.sessionTemplateSnapshot,
-                utterances: utterancesSnapshot
+                utterances: utterancesSnapshot,
+                warnings: sessionWarnings
             )
         )
 
@@ -520,6 +529,7 @@ final class LiveSessionController {
         // 7. Update UI state + refresh history
         coordinator.lastEndedSession = index
         coordinator.sessionTemplateSnapshot = nil
+        settings?.resetTemporaryScreenshotVisibility()
         _currentSessionID = nil
         await coordinator.loadHistory()
 
@@ -550,6 +560,7 @@ final class LiveSessionController {
         coordinator.transcriptionEngine?.stop()
         coordinator.audioRecorder?.discardRecording()
         coordinator.transcriptStore.clear()
+        coordinator.activeSettings?.resetTemporaryScreenshotVisibility()
         _currentSessionID = nil
         Task {
             await coordinator.sessionRepository.endSession()
@@ -600,6 +611,15 @@ final class LiveSessionController {
         next.modelDisplayName = activeModelRaw.split(separator: "/").last.map(String.init) ?? activeModelRaw
         next.showLiveTranscript = settings.showLiveTranscript
         next.isMicMuted = coordinator.transcriptionEngine?.isMicMuted ?? false
+        next.micCaptureStatus = coordinator.transcriptionEngine?.micCaptureStatus ?? .idle(.microphone)
+        next.systemAudioCaptureStatus = coordinator.transcriptionEngine?.systemAudioCaptureStatus ?? .idle(.systemAudio)
+        next.sessionWarnings = coordinator.transcriptionEngine?.sessionWarnings ?? []
+        next.aiStatus = AIStatusResolver.resolve(
+            settings: settings,
+            knowledgeBase: coordinator.knowledgeBase,
+            sessionWarnings: next.sessionWarnings
+        )
+        next.screenshotVisibilityEnabled = settings.temporaryScreenshotVisibilityEnabled
 
         state = next
     }
@@ -671,11 +691,15 @@ final class LiveSessionController {
             let levelChanged = abs(currentState.audioLevel - observedAudioLevel) > 0.01
             let suggestionsChanged = currentState.suggestions.map(\.id) != observedSuggestions.map(\.id)
             let generatingChanged = currentState.isGeneratingSuggestions != observedIsGenerating
+            let micStatusChanged = currentState.micCaptureStatus != observedMicCaptureStatus
+            let systemStatusChanged = currentState.systemAudioCaptureStatus != observedSystemCaptureStatus
 
-            if levelChanged || suggestionsChanged || generatingChanged {
+            if levelChanged || suggestionsChanged || generatingChanged || micStatusChanged || systemStatusChanged {
                 observedAudioLevel = currentState.audioLevel
                 observedSuggestions = currentState.suggestions
                 observedIsGenerating = currentState.isGeneratingSuggestions
+                observedMicCaptureStatus = currentState.micCaptureStatus
+                observedSystemCaptureStatus = currentState.systemAudioCaptureStatus
                 onMiniBarContentUpdate?()
             }
         }

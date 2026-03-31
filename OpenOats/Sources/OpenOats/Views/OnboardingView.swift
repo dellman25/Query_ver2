@@ -25,6 +25,11 @@ struct OnboardingView: View {
             "Structured Extraction",
             "After the interview, generate a structured summary with extracted requirements, business rules, and open questions \u{2014} all linked back to transcript evidence."
         ),
+        (
+            "camera.aperture",
+            "Private By Default",
+            "Query hides itself from normal macOS screenshots and screen sharing by default. During a live session, use Allow Screenshots in the control bar whenever you need to capture the app itself."
+        ),
     ]
 
     var body: some View {

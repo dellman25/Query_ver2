@@ -30,6 +30,17 @@ struct MenuBarPopoverView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
 
+            if coordinator.isRecording {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    captureRow(title: "You", status: coordinator.transcriptionEngine?.micCaptureStatus ?? .idle(.microphone))
+                    captureRow(title: "Them", status: coordinator.transcriptionEngine?.systemAudioCaptureStatus ?? .idle(.systemAudio))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+
             Divider()
 
             Button(action: onShowMainWindow) {
@@ -157,6 +168,47 @@ struct MenuBarPopoverView: View {
         let minutes = elapsedSeconds / 60
         let seconds = elapsedSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func captureRow(title: String, status: LiveCaptureStatus) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(captureColor(status))
+                .frame(width: 7, height: 7)
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+            Text(captureLabel(status))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .help(status.detail ?? captureLabel(status))
+    }
+
+    private func captureColor(_ status: LiveCaptureStatus) -> Color {
+        switch status.health {
+        case .active:
+            return .green
+        case .starting:
+            return .yellow
+        case .degraded:
+            return .red
+        case .idle:
+            return .secondary.opacity(0.4)
+        }
+    }
+
+    private func captureLabel(_ status: LiveCaptureStatus) -> String {
+        switch status.health {
+        case .active:
+            return "Live"
+        case .starting:
+            return status.didRetry ? "Retrying" : "Starting"
+        case .degraded:
+            return "Unavailable"
+        case .idle:
+            return "Idle"
+        }
     }
 
     private func startTimer() {

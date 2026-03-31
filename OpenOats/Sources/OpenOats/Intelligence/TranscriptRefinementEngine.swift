@@ -3,7 +3,7 @@ import Foundation
 /// Refines utterances by cleaning up filler words and fixing punctuation via LLM.
 /// Runs as a background actor with bounded concurrency.
 actor TranscriptRefinementEngine {
-    private let client = OpenRouterClient()
+    private let llmService: LLMService
     private let settings: AppSettings
     private let transcriptStore: TranscriptStore
 
@@ -22,6 +22,7 @@ actor TranscriptRefinementEngine {
         """
 
     init(settings: AppSettings, transcriptStore: TranscriptStore) {
+        self.llmService = LLMService(settings: settings)
         self.settings = settings
         self.transcriptStore = transcriptStore
     }
@@ -90,29 +91,8 @@ actor TranscriptRefinementEngine {
     }
 
     private func performRefinement(_ utterance: Utterance) async {
-        let apiKey: String?
-        let baseURL: URL?
-        let model: String
-
-        // Read settings on MainActor
         let provider = await MainActor.run { settings.llmProvider }
-        let activeApiKey = await MainActor.run { settings.activeLLMApiKey }
-        let activeBaseURL = await MainActor.run { settings.activeLLMChatCompletionsURL }
-        let activeModel = await MainActor.run { settings.activeLLMModel }
-
-        if provider == .openRouter {
-            apiKey = activeApiKey
-            baseURL = nil
-            model = refinementModel
-        } else {
-            guard let activeBaseURL else {
-                await markFailed(utterance.id)
-                return
-            }
-            apiKey = activeApiKey
-            baseURL = activeBaseURL
-            model = activeModel
-        }
+        let modelOverride = provider == .openRouter ? refinementModel : nil
 
         let messages: [OpenRouterClient.Message] = [
             .init(role: "system", content: systemPrompt),
@@ -120,12 +100,11 @@ actor TranscriptRefinementEngine {
         ]
 
         do {
-            let refined = try await client.complete(
-                apiKey: apiKey,
-                model: model,
+            let refined = try await llmService.complete(
                 messages: messages,
                 maxTokens: 512,
-                baseURL: baseURL
+                modelOverride: modelOverride,
+                feature: "transcript refinement"
             )
 
             let trimmed = refined.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -49,7 +49,7 @@ final class SmokeTests: XCTestCase {
     func testNotesSmokeSupportsDeepLinkAndGeneration() {
         let app = launchApp(scenario: "notesSmoke")
 
-        let deepLink = URL(string: "openoats://notes?sessionID=session_ui_test_notes")!
+        let deepLink = URL(string: "query://notes?sessionID=session_ui_test_notes")!
         openDeepLink(deepLink)
 
         XCTAssertTrue(element(in: app, identifier: "notes.generateButton").waitForExistence(timeout: 5))
@@ -59,9 +59,9 @@ final class SmokeTests: XCTestCase {
 
     private func launchApp(scenario: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchEnvironment["OPENOATS_UI_TEST"] = "1"
-        app.launchEnvironment["OPENOATS_UI_SCENARIO"] = scenario
-        app.launchEnvironment["OPENOATS_UI_TEST_RUN_ID"] = UUID().uuidString
+        app.launchEnvironment["QUERY_UI_TEST"] = "1"
+        app.launchEnvironment["QUERY_UI_SCENARIO"] = scenario
+        app.launchEnvironment["QUERY_UI_TEST_RUN_ID"] = UUID().uuidString
         app.launch()
         return app
     }

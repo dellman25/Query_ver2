@@ -12,12 +12,14 @@ final class MicCapture: @unchecked Sendable {
     private var hasTapInstalled = false
     private let _audioLevel = AudioLevel()
     private let _hasCapturedFrames = SyncBool()
+    private let _lastBufferAt = SyncDate()
     private let _error = SyncString()
     private let _streamContinuation = OSAllocatedUnfairLock<AsyncStream<AVAudioPCMBuffer>.Continuation?>(uncheckedState: nil)
     private let _muted = SyncBool()
 
     var audioLevel: Float { _muted.value ? 0 : _audioLevel.value }
     var hasCapturedFrames: Bool { _hasCapturedFrames.value }
+    var lastBufferAt: Date? { _lastBufferAt.value }
     var captureError: String? { _error.value }
 
     /// When muted, buffers are not forwarded to the stream and audio level reads as 0.
@@ -54,6 +56,7 @@ final class MicCapture: @unchecked Sendable {
             self._streamContinuation.withLock { $0 = continuation }
             errorHolder.value = nil
             self._hasCapturedFrames.value = false
+            self._lastBufferAt.value = nil
 
             diagLog("[MIC-1] bufferStream called, deviceID=\(String(describing: deviceID))")
 
@@ -144,6 +147,7 @@ final class MicCapture: @unchecked Sendable {
             inputNode.installTap(onBus: 0, bufferSize: 4096, format: tapFormat) { buffer, _ in
                 tapCallCount += 1
                 self._hasCapturedFrames.value = true
+                self._lastBufferAt.value = Date()
                 let rms = Self.normalizedRMS(from: buffer)
                 level.value = min(rms * 25, 1.0)
 
@@ -194,6 +198,7 @@ final class MicCapture: @unchecked Sendable {
         engine.reset()
         _audioLevel.value = 0
         _hasCapturedFrames.value = false
+        _lastBufferAt.value = nil
     }
 
     private func makeFreshEngine() -> AVAudioEngine {
@@ -407,6 +412,17 @@ final class SyncDouble: @unchecked Sendable {
 
     func add(_ delta: Double) {
         lock.withLock { _value += delta }
+    }
+}
+
+/// Simple thread-safe optional date holder.
+final class SyncDate: @unchecked Sendable {
+    private var _value: Date?
+    private let lock = NSLock()
+
+    var value: Date? {
+        get { lock.withLock { _value } }
+        set { lock.withLock { _value = newValue } }
     }
 }
 

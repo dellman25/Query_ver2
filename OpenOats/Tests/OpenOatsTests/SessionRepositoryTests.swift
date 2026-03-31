@@ -128,6 +128,39 @@ final class SessionRepositoryTests: XCTestCase {
         await repo.deleteSession(sessionID: sessionID)
     }
 
+    func testFinalizeSessionPersistsWarnings() async {
+        let handle = await repo.startSession()
+        let sessionID = handle.sessionID
+        let utterance = Utterance(text: "Test", speaker: .them, timestamp: Date())
+
+        await repo.appendLiveUtterance(sessionID: sessionID, utterance: utterance)
+        await repo.finalizeSession(
+            sessionID: sessionID,
+            metadata: SessionFinalizeMetadata(
+                endedAt: Date(),
+                utteranceCount: 1,
+                title: "Warning Test",
+                language: "en-US",
+                meetingApp: "Teams",
+                engine: "parakeetV3",
+                templateSnapshot: nil,
+                utterances: [utterance],
+                warnings: [
+                    SessionWarning(
+                        code: "remote-transcription-unavailable",
+                        message: "Remote transcription was unavailable for part of this meeting."
+                    )
+                ]
+            )
+        )
+
+        let detail = await repo.loadSession(id: sessionID)
+        XCTAssertEqual(detail.sessionWarnings.count, 1)
+        XCTAssertEqual(detail.sessionWarnings.first?.code, "remote-transcription-unavailable")
+
+        await repo.deleteSession(sessionID: sessionID)
+    }
+
     // MARK: - saveNotes writes both files
 
     func testSaveNotesWritesBothFiles() async {

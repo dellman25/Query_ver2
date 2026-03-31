@@ -3,6 +3,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+XCODE_VERSION="$(xcodebuild -version 2>/dev/null || true)"
+if [[ "$XCODE_VERSION" != *"Xcode 26"* ]]; then
+  echo "UI smoke tests require Xcode 26 or newer."
+  echo "Current xcodebuild: ${XCODE_VERSION:-unavailable}"
+  exit 1
+fi
+
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/.build/ui-smoke/DerivedData}"
 SOURCE_PACKAGES_PATH="${SOURCE_PACKAGES_PATH:-$PWD/.build/ui-smoke/SourcePackages}"
 

@@ -46,7 +46,15 @@ struct ContentView: View {
                     screenshots: $screenshots,
                     onStop: { stopSession() },
                     onMuteToggle: { liveSessionController?.toggleMicMute() },
-                    onCaptureScreenshot: { liveSessionController?.captureScreenshot() }
+                    onCaptureScreenshot: {
+                        if settings.hideFromScreenShare && !settings.temporaryScreenshotVisibilityEnabled {
+                            settings.setTemporaryScreenshotVisibilityEnabled(true)
+                        }
+                        liveSessionController?.captureScreenshot()
+                    },
+                    onToggleScreenshotVisibility: {
+                        settings.setTemporaryScreenshotVisibilityEnabled(!settings.temporaryScreenshotVisibilityEnabled)
+                    }
                 )
             } else {
                 SessionSetupView(
@@ -129,6 +137,7 @@ struct ContentView: View {
             if coordinator.knowledgeBase == nil {
                 container.ensureServicesInitialized(settings: settings, coordinator: coordinator)
             }
+            coordinator.activeSettings = settings
 
             let controller = LiveSessionController(coordinator: coordinator, container: container)
             controller.onRunningStateChanged = { [weak miniBarManager, weak overlayManager] isRunning in
@@ -246,7 +255,9 @@ struct ContentView: View {
         miniBarManager.update(
             audioLevel: controller.state.audioLevel,
             suggestions: controller.state.suggestions,
-            isGenerating: controller.state.isGeneratingSuggestions
+            isGenerating: controller.state.isGeneratingSuggestions,
+            micCaptureStatus: controller.state.micCaptureStatus,
+            systemAudioCaptureStatus: controller.state.systemAudioCaptureStatus
         )
         miniBarManager.show()
     }

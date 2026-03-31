@@ -22,7 +22,7 @@ final class SidecastEngine {
             .map { Suggestion(text: "\($0.personaName): \($0.text)") }
     }
 
-    private let client = OpenRouterClient()
+    private let llmService: LLMService
     private let transcriptStore: TranscriptStore
     private let knowledgeBase: KnowledgeBase
     private let settings: AppSettings
@@ -37,6 +37,7 @@ final class SidecastEngine {
         self.transcriptStore = transcriptStore
         self.knowledgeBase = knowledgeBase
         self.settings = settings
+        self.llmService = LLMService(settings: settings)
     }
 
     func onUtterance(_ utterance: Utterance) {
@@ -77,12 +78,11 @@ final class SidecastEngine {
             )
 
             do {
-                let response = try await self.client.complete(
-                    apiKey: self.llmApiKey,
-                    model: self.settings.activeRealtimeModel,
+                let response = try await self.llmService.complete(
                     messages: prompt,
                     maxTokens: 700,
-                    baseURL: self.llmBaseURL
+                    modelOverride: self.settings.activeRealtimeModel,
+                    feature: "sidecast"
                 )
                 let decoded = try self.decodeResponse(response)
 
@@ -327,20 +327,7 @@ final class SidecastEngine {
     }
 
     private var canCallLLM: Bool {
-        switch settings.llmProvider {
-        case .openRouter:
-            return !settings.openRouterApiKey.isEmpty
-        case .ollama, .mlx, .lmStudio, .openAICompatible:
-            return llmBaseURL != nil
-        }
-    }
-
-    private var llmApiKey: String? {
-        settings.activeLLMApiKey
-    }
-
-    private var llmBaseURL: URL? {
-        settings.llmProvider == .openRouter ? nil : settings.activeLLMChatCompletionsURL
+        AIStatusResolver.providerConfigurationIssue(for: settings) == nil
     }
 }
 

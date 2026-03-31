@@ -57,7 +57,7 @@ final class SuggestionEngine {
 
     // MARK: - Dependencies
 
-    private let client = OpenRouterClient()
+    private let llmService: LLMService
     private let transcriptStore: TranscriptStore
     private let knowledgeBase: KnowledgeBase
     private let settings: AppSettings
@@ -95,6 +95,7 @@ final class SuggestionEngine {
         self.transcriptStore = transcriptStore
         self.knowledgeBase = knowledgeBase
         self.settings = settings
+        self.llmService = LLMService(settings: settings)
         self.preFetchCache = PreFetchCache(ttlSeconds: 30)
         self.gate = RealtimeGate()
     }
@@ -173,12 +174,10 @@ final class SuggestionEngine {
         )
 
         do {
-            let response = try await client.complete(
-                apiKey: llmApiKey,
-                model: activePrimaryModel,
+            let response = try await llmService.complete(
                 messages: statePrompt,
                 maxTokens: 512,
-                baseURL: llmBaseURL(forRealtime: false)
+                feature: "conversation state"
             )
 
             let jsonString = extractJSON(from: response)
@@ -219,12 +218,7 @@ final class SuggestionEngine {
         lastProcessedUtteranceID = utterance.id
 
         // Validate credentials
-        switch settings.llmProvider {
-        case .openRouter:
-            guard !settings.openRouterApiKey.isEmpty else { return }
-        case .ollama, .mlx, .lmStudio, .openAICompatible:
-            guard llmBaseURL(forRealtime: true) != nil else { return }
-        }
+        guard AIStatusResolver.providerConfigurationIssue(for: settings) == nil else { return }
 
         triggerBackgroundStateUpdate()
 
@@ -383,12 +377,11 @@ final class SuggestionEngine {
         )
 
         do {
-            let stream = await client.streamCompletion(
-                apiKey: llmApiKey,
-                model: settings.activeRealtimeModel,
+            let stream = await llmService.streamCompletion(
                 messages: messages,
                 maxTokens: 200,
-                baseURL: llmBaseURL(forRealtime: true)
+                modelOverride: settings.activeRealtimeModel,
+                feature: "classic suggestion synthesis"
             )
 
             var accumulated = ""
@@ -494,18 +487,6 @@ final class SuggestionEngine {
     }
 
     // MARK: - LLM Helpers
-
-    private var activePrimaryModel: String {
-        settings.activeLLMModel
-    }
-
-    private var llmApiKey: String? {
-        settings.activeLLMApiKey
-    }
-
-    private func llmBaseURL(forRealtime: Bool) -> URL? {
-        settings.llmProvider == .openRouter ? nil : settings.activeLLMChatCompletionsURL
-    }
 
     // MARK: - Prompts
 

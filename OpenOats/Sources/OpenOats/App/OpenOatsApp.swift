@@ -267,7 +267,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let hidden = defaults.object(forKey: "hideFromScreenShare") == nil
             ? true
             : defaults.bool(forKey: "hideFromScreenShare")
-        let sharingType: NSWindow.SharingType = hidden ? .none : .readOnly
+        let sharingType = ScreenShareVisibilityController.shared.currentSharingType(
+            hideFromScreenShareByDefault: hidden
+        )
 
         for window in NSApp.windows {
             window.sharingType = sharingType
@@ -288,7 +290,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 let hide = self.defaults.object(forKey: "hideFromScreenShare") == nil
                     ? true
                     : self.defaults.bool(forKey: "hideFromScreenShare")
-                let type: NSWindow.SharingType = hide ? .none : .readOnly
+                let type = ScreenShareVisibilityController.shared.currentSharingType(
+                    hideFromScreenShareByDefault: hide
+                )
                 for window in NSApp.windows {
                     window.sharingType = type
                 }

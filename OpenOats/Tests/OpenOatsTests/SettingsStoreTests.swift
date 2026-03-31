@@ -44,6 +44,26 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.selectedModel, "google/gemini-3-flash-preview")
     }
 
+    func testDefaultGeminiSettings() {
+        let store = makeStore()
+        XCTAssertEqual(store.geminiModel, "gemini-2.5-flash")
+        XCTAssertEqual(store.geminiRealtimeModel, "gemini-2.5-flash-lite")
+        XCTAssertEqual(store.geminiApiKey, "")
+    }
+
+    func testGeminiSettingsRoundTrip() {
+        let store = makeStore()
+        store.llmProvider = .gemini
+        store.geminiApiKey = "gem-key"
+        store.geminiModel = "gemini-2.5-pro"
+        store.geminiRealtimeModel = "gemini-2.5-flash"
+
+        XCTAssertEqual(store.activeLLMModel, "gemini-2.5-pro")
+        XCTAssertEqual(store.activeRealtimeModel, "gemini-2.5-flash")
+        XCTAssertEqual(store.activeLLMApiKey, "gem-key")
+        XCTAssertNil(store.activeLLMBaseURLString)
+    }
+
     func testSelectedModelRoundTrip() {
         let store = makeStore()
         store.selectedModel = "anthropic/claude-4-sonnet"
@@ -287,6 +307,16 @@ final class SettingsStoreTests: XCTestCase {
         let store = makeStore()
         // Defaults to true when key never set
         XCTAssertTrue(store.hideFromScreenShare)
+    }
+
+    func testTemporaryScreenshotVisibilityResets() {
+        let store = makeStore()
+
+        store.setTemporaryScreenshotVisibilityEnabled(true)
+        XCTAssertTrue(store.temporaryScreenshotVisibilityEnabled)
+
+        store.resetTemporaryScreenshotVisibility()
+        XCTAssertFalse(store.temporaryScreenshotVisibilityEnabled)
     }
 
     // MARK: - UI Settings Group

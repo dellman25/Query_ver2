@@ -244,6 +244,22 @@ final class LiveSessionControllerTests: XCTestCase {
         XCTAssertTrue(coordinator.transcriptionEngine?.downloadConfirmed ?? false)
     }
 
+    func testDiscardSessionResetsTemporaryScreenshotVisibility() {
+        let dirs = makeTempDirs()
+        let settings = makeSettings(notesDirectory: dirs.notes)
+        let (controller, coordinator) = makeController(
+            root: dirs.root,
+            notesDirectory: dirs.notes,
+            settings: settings
+        )
+        coordinator.activeSettings = settings
+        settings.setTemporaryScreenshotVisibilityEnabled(true)
+
+        controller.discardSession()
+
+        XCTAssertFalse(settings.temporaryScreenshotVisibilityEnabled)
+    }
+
     func testFullSessionLifecycle() async {
         let dirs = makeTempDirs()
         let settings = makeSettings(notesDirectory: dirs.notes)

@@ -33,6 +33,7 @@ struct NotesState {
     var interviewTags: [InterviewTag] = []
     var screenshots: [ScreenshotCapture] = []
     var summaryArtifact: SummaryArtifact?
+    var sessionWarnings: [SessionWarning] = []
 
     /// Whether this session has any interview artifacts worth showing in the timeline.
     var hasInterviewArtifacts: Bool {
@@ -144,6 +145,7 @@ final class NotesController {
         state.screenshots = []
         state.interviewSetup = nil
         state.summaryArtifact = nil
+        state.sessionWarnings = []
         state.summaryGenerationStatus = .idle
         state.selectedSessionDirectory = coordinator.sessionRepository.sessionsDirectoryURL
             .appendingPathComponent(sessionID, isDirectory: true)
@@ -165,6 +167,7 @@ final class NotesController {
             state.screenshots = detail.screenshots
             state.interviewSetup = detail.interviewSetup
             state.summaryArtifact = detail.summaryArtifact
+            state.sessionWarnings = detail.sessionWarnings
             state.summaryGenerationStatus = detail.summaryArtifact == nil ? .idle : .completed
 
             let session = state.sessionHistory.first { $0.id == sessionID }

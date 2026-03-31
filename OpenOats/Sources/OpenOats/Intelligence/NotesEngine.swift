@@ -28,7 +28,6 @@ final class NotesEngine {
         set { withMutation(keyPath: \.error) { _error = newValue } }
     }
 
-    private let client = OpenRouterClient()
     private var currentTask: Task<Void, Never>?
     private let mode: Mode
 
@@ -53,37 +52,20 @@ final class NotesEngine {
             return
         }
 
-        let apiKey = settings.activeLLMApiKey
-        let baseURL: URL?
-        let model = settings.activeLLMModel
-
-        if settings.llmProvider == .openRouter {
-            baseURL = nil
-        } else {
-            guard let resolvedBaseURL = settings.activeLLMChatCompletionsURL else {
-                error = "Invalid \(settings.llmProvider.displayName) URL: \(settings.activeLLMBaseURLString ?? "")"
-                isGenerating = false
-                return
-            }
-            baseURL = resolvedBaseURL
-        }
-
         let transcriptText = formatTranscript(transcript)
         let messages: [OpenRouterClient.Message] = [
             .init(role: "system", content: template.systemPrompt),
             .init(role: "user", content: "Here is the meeting transcript:\n\n\(transcriptText)\n\nGenerate the meeting notes in markdown:")
         ]
+        let llmService = LLMService(settings: settings)
 
         let task = Task { [weak self] in
             do {
-                let stream = await self?.client.streamCompletion(
-                    apiKey: apiKey,
-                    model: model,
+                let stream = await llmService.streamCompletion(
                     messages: messages,
                     maxTokens: 4096,
-                    baseURL: baseURL
+                    feature: "notes generation"
                 )
-                guard let stream else { return }
 
                 for try await chunk in stream {
                     guard !Task.isCancelled else { return }

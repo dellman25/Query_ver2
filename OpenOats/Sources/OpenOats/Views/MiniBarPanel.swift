@@ -18,7 +18,9 @@ final class MiniBarPanel: NSPanel {
         let hidden = defaults.object(forKey: "hideFromScreenShare") == nil
             ? true
             : defaults.bool(forKey: "hideFromScreenShare")
-        sharingType = hidden ? .none : .readOnly
+        sharingType = ScreenShareVisibilityController.shared.currentSharingType(
+            hideFromScreenShareByDefault: hidden
+        )
         isMovableByWindowBackground = true
         titlebarAppearsTransparent = true
         titleVisibility = .hidden
@@ -40,6 +42,8 @@ final class MiniBarState {
     var audioLevel: Float = 0
     var suggestions: [Suggestion] = []
     var isGenerating: Bool = false
+    var micCaptureStatus: LiveCaptureStatus = .idle(.microphone)
+    var systemAudioCaptureStatus: LiveCaptureStatus = .idle(.systemAudio)
     /// Not observed — assigning a new closure should not trigger SwiftUI invalidation.
     @ObservationIgnored var onTap: () -> Void = {}
 }
@@ -73,10 +77,18 @@ final class MiniBarManager: ObservableObject {
         }
     }
 
-    func update(audioLevel: Float, suggestions: [Suggestion], isGenerating: Bool) {
+    func update(
+        audioLevel: Float,
+        suggestions: [Suggestion],
+        isGenerating: Bool,
+        micCaptureStatus: LiveCaptureStatus,
+        systemAudioCaptureStatus: LiveCaptureStatus
+    ) {
         state.audioLevel = audioLevel
         state.suggestions = suggestions
         state.isGenerating = isGenerating
+        state.micCaptureStatus = micCaptureStatus
+        state.systemAudioCaptureStatus = systemAudioCaptureStatus
     }
 
     func hide() {

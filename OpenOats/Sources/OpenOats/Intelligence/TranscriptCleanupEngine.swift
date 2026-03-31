@@ -32,7 +32,6 @@ final class TranscriptCleanupEngine {
     }
 
     private nonisolated static let logger = Logger(subsystem: "com.query.app", category: "TranscriptCleanup")
-    private let client = OpenRouterClient()
     private var currentTask: Task<[SessionRecord], Never>?
 
     /// The system prompt instructing the LLM how to clean up transcripts.
@@ -58,27 +57,12 @@ final class TranscriptCleanupEngine {
         chunksCompleted = 0
         error = nil
 
-        let apiKey = settings.activeLLMApiKey
-        let baseURL: URL?
-        let model: String
-
-        if settings.llmProvider == .openRouter {
-            baseURL = nil
-            model = "openai/gpt-4o-mini"
-        } else {
-            guard let resolvedBaseURL = settings.activeLLMChatCompletionsURL else {
-                error = "Invalid \(settings.llmProvider.displayName) URL: \(settings.activeLLMBaseURLString ?? "")"
-                isCleaningUp = false
-                return records
-            }
-            baseURL = resolvedBaseURL
-            model = settings.activeLLMModel
-        }
-
         let chunks = Self.chunkRecords(records)
         totalChunks = chunks.count
+        let llmService = LLMService(settings: settings)
+        let modelOverride = settings.llmProvider == .openRouter ? "openai/gpt-4o-mini" : nil
 
-        let task = Task { [weak self, client, apiKey, baseURL, model] () -> [SessionRecord] in
+        let task = Task { [weak self, llmService, modelOverride] () -> [SessionRecord] in
             // Process chunks concurrently (up to 3 at a time) off the main actor.
             let results: [(index: Int, records: [SessionRecord]?)] = await withTaskGroup(
                 of: (Int, [SessionRecord]?).self,
@@ -101,10 +85,8 @@ final class TranscriptCleanupEngine {
                     group.addTask {
                         let cleaned = await Self.processChunk(
                             chunk,
-                            client: client,
-                            apiKey: apiKey,
-                            model: model,
-                            baseURL: baseURL
+                            llmService: llmService,
+                            modelOverride: modelOverride
                         )
                         return (chunkIndex, cleaned)
                     }
@@ -204,10 +186,8 @@ final class TranscriptCleanupEngine {
 
     private nonisolated static func processChunk(
         _ records: [SessionRecord],
-        client: OpenRouterClient,
-        apiKey: String?,
-        model: String,
-        baseURL: URL?
+        llmService: LLMService,
+        modelOverride: String?
     ) async -> [SessionRecord]? {
         let lines = records.map { record in
             let label = record.speaker.displayLabel
@@ -223,12 +203,11 @@ final class TranscriptCleanupEngine {
         ]
 
         do {
-            let response = try await client.complete(
-                apiKey: apiKey,
-                model: model,
+            let response = try await llmService.complete(
                 messages: messages,
                 maxTokens: 4096,
-                baseURL: baseURL
+                modelOverride: modelOverride,
+                feature: "transcript cleanup"
             )
 
             return parseResponse(response, originalRecords: records)

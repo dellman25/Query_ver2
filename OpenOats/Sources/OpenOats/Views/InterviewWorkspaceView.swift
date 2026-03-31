@@ -10,6 +10,7 @@ struct InterviewWorkspaceView: View {
     let onStop: () -> Void
     let onMuteToggle: () -> Void
     let onCaptureScreenshot: () -> Void
+    let onToggleScreenshotVisibility: () -> Void
 
     @State private var noteText = ""
     @State private var selectedTags: Set<InterviewTagKind> = []
@@ -43,7 +44,8 @@ struct InterviewWorkspaceView: View {
                     transcript: controllerState.liveTranscript,
                     notes: notes,
                     interviewTags: interviewTags,
-                    screenshots: screenshots
+                    screenshots: screenshots,
+                    aiStatus: controllerState.aiStatus
                 )
                     .frame(minWidth: 200, idealWidth: 260, maxWidth: 300)
             }
@@ -87,6 +89,9 @@ struct InterviewWorkspaceView: View {
                     .lineLimit(1)
             }
 
+            captureBadge(title: "You", systemImage: "mic.fill", status: controllerState.micCaptureStatus)
+            captureBadge(title: "Them", systemImage: "speaker.wave.2.fill", status: controllerState.systemAudioCaptureStatus)
+
             Spacer()
 
             Text(controllerState.modelDisplayName)
@@ -116,6 +121,50 @@ struct InterviewWorkspaceView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    private func captureBadge(title: String, systemImage: String, status: LiveCaptureStatus) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.system(size: 9, weight: .medium))
+            Circle()
+                .fill(captureStatusColor(status))
+                .frame(width: 6, height: 6)
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(captureStatusColor(status).opacity(0.08))
+        .foregroundStyle(captureStatusColor(status))
+        .clipShape(Capsule())
+        .help(status.detail ?? "\(title) is \(captureStatusLabel(status)).")
+    }
+
+    private func captureStatusColor(_ status: LiveCaptureStatus) -> Color {
+        switch status.health {
+        case .active:
+            return .green
+        case .starting:
+            return .yellow
+        case .degraded:
+            return .red
+        case .idle:
+            return .secondary
+        }
+    }
+
+    private func captureStatusLabel(_ status: LiveCaptureStatus) -> String {
+        switch status.health {
+        case .active:
+            return "active"
+        case .starting:
+            return "starting"
+        case .degraded:
+            return "degraded"
+        case .idle:
+            return "idle"
+        }
     }
 
     // MARK: - Transcript Panel (Left)
@@ -586,7 +635,35 @@ struct InterviewWorkspaceView: View {
             .accessibilityLabel("Capture screenshot")
             .accessibilityIdentifier("app.controlBar.screenshot")
 
+            Button(action: onToggleScreenshotVisibility) {
+                HStack(spacing: 5) {
+                    Image(systemName: controllerState.screenshotVisibilityEnabled ? "eye.fill" : "eye.slash.fill")
+                        .font(.system(size: 11))
+                    Text(controllerState.screenshotVisibilityEnabled ? "Screenshots On" : "Allow Screenshots")
+                        .font(.system(size: 11))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    controllerState.screenshotVisibilityEnabled
+                        ? Color.blue.opacity(0.12)
+                        : Color.primary.opacity(0.05)
+                )
+                .foregroundStyle(controllerState.screenshotVisibilityEnabled ? .blue : .secondary)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Temporarily make Query visible to macOS screenshots and screen capture tools.")
+            .accessibilityIdentifier("app.controlBar.screenshotVisibility")
+
             Spacer()
+
+            if let warning = controllerState.sessionWarnings.first {
+                Text(warning.message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+            }
 
             if let error = controllerState.errorMessage {
                 Text(error)

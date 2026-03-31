@@ -16,7 +16,9 @@ final class OverlayPanel: NSPanel {
         let hidden = defaults.object(forKey: "hideFromScreenShare") == nil
             ? true
             : defaults.bool(forKey: "hideFromScreenShare")
-        sharingType = hidden ? .none : .readOnly
+        sharingType = ScreenShareVisibilityController.shared.currentSharingType(
+            hideFromScreenShareByDefault: hidden
+        )
         isMovableByWindowBackground = true
         titlebarAppearsTransparent = true
         titleVisibility = .hidden

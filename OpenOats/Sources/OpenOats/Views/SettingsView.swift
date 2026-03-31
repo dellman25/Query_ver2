@@ -199,7 +199,7 @@ private struct GeneralSettingsTab: View {
                 Section("Privacy") {
                     Toggle("Hide from screen sharing", isOn: $settings.hideFromScreenShare)
                         .font(.system(size: 12))
-                    Text("When enabled, the app is invisible during screen sharing and recording.")
+                    Text("When enabled, Query is hidden from screen sharing and normal macOS screenshots by default. During a live session you can temporarily enable screenshots from the workspace control bar.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -383,10 +383,102 @@ private struct TranscriptionSettingsTab: View {
 
 private struct IntelligenceSettingsTab: View {
     @Bindable var settings: AppSettings
+    @Environment(AppCoordinator.self) private var coordinator
+    @State private var connectionTestTask: Task<Void, Never>?
+
+    private var aiStatus: AIStatusSnapshot {
+        AIStatusResolver.resolve(
+            settings: settings,
+            knowledgeBase: coordinator.knowledgeBase,
+            sessionWarnings: []
+        )
+    }
+
+    private var isTestingConnection: Bool {
+        if case .testing = settings.aiConnectionTestState { return true }
+        return false
+    }
 
     var body: some View {
         ScrollView {
             Form {
+                Section("AI Status") {
+                    LabeledContent("Provider") {
+                        Text(aiStatus.providerName)
+                    }
+
+                    LabeledContent("Model") {
+                        Text(aiStatus.modelName.isEmpty ? "Not set" : aiStatus.modelName)
+                            .foregroundStyle(aiStatus.modelName.isEmpty ? .tertiary : .primary)
+                    }
+
+                    LabeledContent("Status") {
+                        Text(statusLabel(aiStatus.state))
+                            .foregroundStyle(statusColor(aiStatus.state))
+                    }
+
+                    LabeledContent("Knowledge Base") {
+                        Text(aiStatus.knowledgeBaseReady ? "Ready" : "Not ready")
+                            .foregroundStyle(aiStatus.knowledgeBaseReady ? .green : .yellow)
+                    }
+
+                    if let lastSuccessAt = settings.lastAISuccessAt {
+                        LabeledContent("Last Success") {
+                            Text(RelativeDateTimeFormatter().localizedString(for: lastSuccessAt, relativeTo: .now))
+                        }
+                    }
+
+                    if let lastFeature = settings.lastAISuccessFeature {
+                        LabeledContent("Last Feature") {
+                            Text(lastFeature)
+                        }
+                    }
+
+                    if let lastError = settings.lastAIError {
+                        Text(lastError)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(aiStatus.detail)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    HStack {
+                        Button(isTestingConnection ? "Testing..." : "Test Connection") {
+                            settings.setAIConnectionTestState(.testing)
+                            connectionTestTask?.cancel()
+                            connectionTestTask = Task { @MainActor in
+                                do {
+                                    let message = try await LLMService(settings: settings).testConnection()
+                                    settings.setAIConnectionTestState(.success(message))
+                                } catch {
+                                    settings.setAIConnectionTestState(.failure(error.localizedDescription))
+                                }
+                            }
+                        }
+                        .disabled(isTestingConnection)
+
+                        switch settings.aiConnectionTestState {
+                        case .idle:
+                            EmptyView()
+                        case .testing:
+                            ProgressView()
+                                .controlSize(.small)
+                        case .success(let message):
+                            Text(message)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.green)
+                        case .failure(let message):
+                            Text(message)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
+
                 Section("LLM Provider") {
                     Picker("Provider", selection: $settings.llmProvider) {
                         ForEach(LLMProvider.allCases) { provider in
@@ -403,6 +495,20 @@ private struct IntelligenceSettingsTab: View {
 
                         TextField("Model", text: $settings.selectedModel, prompt: Text("e.g. google/gemini-3-flash-preview"))
                             .font(.system(size: 12, design: .monospaced))
+                    case .gemini:
+                        SecureField("Gemini API Key", text: $settings.geminiApiKey)
+                            .font(.system(size: 12, design: .monospaced))
+
+                        TextField("Model", text: $settings.geminiModel, prompt: Text("e.g. gemini-2.5-flash"))
+                            .font(.system(size: 12, design: .monospaced))
+
+                        TextField("Realtime Model", text: $settings.geminiRealtimeModel, prompt: Text("e.g. gemini-2.5-flash-lite"))
+                            .font(.system(size: 12, design: .monospaced))
+
+                        Text("Gemini is used for LLM-backed features only in this release. Embeddings stay on your configured embedding provider.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     case .ollama:
                         TextField("Ollama URL", text: $settings.ollamaBaseURL, prompt: Text("http://localhost:11434"))
                             .font(.system(size: 12, design: .monospaced))
@@ -507,6 +613,10 @@ private struct IntelligenceSettingsTab: View {
                         Text("A fast model used for real-time suggestion synthesis. Separate from your main model.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                    case .gemini:
+                        Text("Gemini uses the realtime model configured above. Query guidance still runs locally even when cloud AI is unavailable.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     case .ollama:
                         OllamaModelField(modelName: $settings.realtimeOllamaModel, baseURL: settings.ollamaBaseURL, placeholder: "Leave empty to use main model")
                         Text("Optional Ollama model for real-time suggestions. Uses your main model if empty.")
@@ -571,6 +681,9 @@ private struct IntelligenceSettingsTab: View {
             }
             .formStyle(.grouped)
         }
+        .onDisappear {
+            connectionTestTask?.cancel()
+        }
     }
 
     private func chooseKBFolder() {
@@ -582,6 +695,32 @@ private struct IntelligenceSettingsTab: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             settings.kbFolderPath = url.path
+        }
+    }
+
+    private func statusLabel(_ state: AIAvailabilityState) -> String {
+        switch state {
+        case .ready:
+            return "Ready"
+        case .limited:
+            return "Limited"
+        case .error:
+            return "Error"
+        case .disabled:
+            return "Off"
+        }
+    }
+
+    private func statusColor(_ state: AIAvailabilityState) -> Color {
+        switch state {
+        case .ready:
+            return .green
+        case .limited:
+            return .yellow
+        case .error:
+            return .red
+        case .disabled:
+            return .secondary
         }
     }
 }

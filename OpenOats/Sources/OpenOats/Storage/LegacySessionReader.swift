@@ -89,7 +89,8 @@ enum LegacySessionReader {
             baNotes: [],
             interviewTags: [],
             screenshots: [],
-            summaryArtifact: nil
+            summaryArtifact: nil,
+            sessionWarnings: []
         )
     }
 

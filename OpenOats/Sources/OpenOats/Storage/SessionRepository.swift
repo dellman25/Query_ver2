@@ -65,6 +65,7 @@ struct SessionFinalizeMetadata: Sendable {
     let engine: String?
     let templateSnapshot: TemplateSnapshot?
     let utterances: [Utterance]
+    let warnings: [SessionWarning] = []
 }
 
 /// Full session detail for loading.
@@ -82,6 +83,7 @@ struct SessionDetail: Sendable {
     let interviewTags: [InterviewTag]
     let screenshots: [ScreenshotCapture]
     let summaryArtifact: SummaryArtifact?
+    let sessionWarnings: [SessionWarning]
 }
 
 /// Metadata persisted alongside notes.
@@ -118,6 +120,7 @@ struct SessionMetadata: Codable, Sendable {
     var screenshotCount: Int?
     /// Whether post-interview synthesis has been generated.
     var hasSummary: Bool?
+    var warnings: [SessionWarning]?
 }
 
 // MARK: - SessionRepository
@@ -374,7 +377,8 @@ actor SessionRepository {
             interviewSetup: existing?.interviewSetup,
             noteCount: existing?.noteCount,
             screenshotCount: existing?.screenshotCount,
-            hasSummary: existing?.hasSummary
+            hasSummary: existing?.hasSummary,
+            warnings: metadata.warnings
         )
         writeSessionMetadata(sessionMeta, sessionID: sessionID)
     }
@@ -631,7 +635,8 @@ actor SessionRepository {
                 baNotes: baNotes,
                 interviewTags: interviewTags,
                 screenshots: screenshots,
-                summaryArtifact: summaryArtifact
+                summaryArtifact: summaryArtifact,
+                sessionWarnings: meta.warnings ?? []
             )
         }
 

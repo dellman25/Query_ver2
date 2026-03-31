@@ -26,6 +26,13 @@ SKIP_INSTALL="${SKIP_INSTALL:-0}"
 
 echo "=== Building $APP_NAME (Swift) ==="
 
+SWIFT_VERSION="$(swift --version 2>/dev/null || true)"
+if [[ "$SWIFT_VERSION" != *"Swift version 6.2"* && "$SWIFT_VERSION" != *"Swift version 6.3"* && "$SWIFT_VERSION" != *"Swift version 7"* ]]; then
+  echo "Query requires Swift 6.2 or newer (Xcode 26+)."
+  echo "Current toolchain: ${SWIFT_VERSION:-unavailable}"
+  exit 1
+fi
+
 # Build release binary
 cd "$SWIFT_DIR"
 swift build -c release 2>&1

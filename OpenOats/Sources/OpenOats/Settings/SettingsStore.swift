@@ -34,6 +34,39 @@ final class SettingsStore {
         }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _geminiApiKey: String
+    var geminiApiKey: String {
+        get { access(keyPath: \.geminiApiKey); return _geminiApiKey }
+        set {
+            withMutation(keyPath: \.geminiApiKey) {
+                _geminiApiKey = newValue
+                secretStore.save(key: "geminiApiKey", value: newValue)
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _geminiModel: String
+    var geminiModel: String {
+        get { access(keyPath: \.geminiModel); return _geminiModel }
+        set {
+            withMutation(keyPath: \.geminiModel) {
+                _geminiModel = newValue
+                defaults.set(newValue, forKey: "geminiModel")
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _geminiRealtimeModel: String
+    var geminiRealtimeModel: String {
+        get { access(keyPath: \.geminiRealtimeModel); return _geminiRealtimeModel }
+        set {
+            withMutation(keyPath: \.geminiRealtimeModel) {
+                _geminiRealtimeModel = newValue
+                defaults.set(newValue, forKey: "geminiRealtimeModel")
+            }
+        }
+    }
+
     @ObservationIgnored nonisolated(unsafe) private var _ollamaBaseURL: String
     var ollamaBaseURL: String {
         get { access(keyPath: \.ollamaBaseURL); return _ollamaBaseURL }
@@ -652,6 +685,42 @@ final class SettingsStore {
         }
     }
 
+    // MARK: - Runtime-only Status
+
+    @ObservationIgnored nonisolated(unsafe) private var _temporaryScreenshotVisibilityEnabled = false
+    var temporaryScreenshotVisibilityEnabled: Bool {
+        get { access(keyPath: \.temporaryScreenshotVisibilityEnabled); return _temporaryScreenshotVisibilityEnabled }
+        set {
+            withMutation(keyPath: \.temporaryScreenshotVisibilityEnabled) {
+                _temporaryScreenshotVisibilityEnabled = newValue
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _aiConnectionTestState: AIConnectionTestState = .idle
+    var aiConnectionTestState: AIConnectionTestState {
+        get { access(keyPath: \.aiConnectionTestState); return _aiConnectionTestState }
+        set { withMutation(keyPath: \.aiConnectionTestState) { _aiConnectionTestState = newValue } }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _lastAIError: String?
+    var lastAIError: String? {
+        get { access(keyPath: \.lastAIError); return _lastAIError }
+        set { withMutation(keyPath: \.lastAIError) { _lastAIError = newValue } }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _lastAISuccessAt: Date?
+    var lastAISuccessAt: Date? {
+        get { access(keyPath: \.lastAISuccessAt); return _lastAISuccessAt }
+        set { withMutation(keyPath: \.lastAISuccessAt) { _lastAISuccessAt = newValue } }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _lastAISuccessFeature: String?
+    var lastAISuccessFeature: String? {
+        get { access(keyPath: \.lastAISuccessFeature); return _lastAISuccessFeature }
+        set { withMutation(keyPath: \.lastAISuccessFeature) { _lastAISuccessFeature = newValue } }
+    }
+
     // MARK: - Initialization
 
     init(storage: SettingsStorage = .live()) {
@@ -670,6 +739,9 @@ final class SettingsStore {
         // AI Settings
         self._llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .openRouter
         self._openRouterApiKey = storage.secretStore.load(key: "openRouterApiKey") ?? ""
+        self._geminiApiKey = storage.secretStore.load(key: "geminiApiKey") ?? ""
+        self._geminiModel = defaults.string(forKey: "geminiModel") ?? "gemini-2.5-flash"
+        self._geminiRealtimeModel = defaults.string(forKey: "geminiRealtimeModel") ?? "gemini-2.5-flash-lite"
         self._ollamaBaseURL = defaults.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"
         self._ollamaLLMModel = defaults.string(forKey: "ollamaLLMModel") ?? "qwen3:8b"
         self._ollamaEmbedModel = defaults.string(forKey: "ollamaEmbedModel") ?? "nomic-embed-text"
@@ -803,6 +875,7 @@ final class SettingsStore {
     var activeLLMModel: String {
         switch llmProvider {
         case .openRouter: selectedModel
+        case .gemini: geminiModel
         case .ollama: ollamaLLMModel
         case .mlx: mlxModel
         case .lmStudio: lmStudioLLMModel
@@ -814,6 +887,7 @@ final class SettingsStore {
     var activeLLMBaseURLString: String? {
         switch llmProvider {
         case .openRouter: nil
+        case .gemini: nil
         case .ollama: ollamaBaseURL
         case .mlx: mlxBaseURL
         case .lmStudio: lmStudioBaseURL
@@ -826,6 +900,8 @@ final class SettingsStore {
         switch llmProvider {
         case .openRouter:
             openRouterApiKey.isEmpty ? nil : openRouterApiKey
+        case .gemini:
+            geminiApiKey.isEmpty ? nil : geminiApiKey
         case .ollama, .mlx:
             nil
         case .lmStudio:
@@ -885,6 +961,7 @@ final class SettingsStore {
     var activeRealtimeModel: String {
         switch llmProvider {
         case .openRouter: return realtimeModel
+        case .gemini: return geminiRealtimeModel.isEmpty ? geminiModel : geminiRealtimeModel
         case .ollama: return realtimeOllamaModel.isEmpty ? ollamaLLMModel : realtimeOllamaModel
         case .mlx: return mlxModel
         case .lmStudio: return lmStudioRealtimeModel.isEmpty ? lmStudioLLMModel : lmStudioRealtimeModel
@@ -911,10 +988,38 @@ final class SettingsStore {
 
     /// Apply current screen-share visibility to all app windows.
     func applyScreenShareVisibility() {
-        let type: NSWindow.SharingType = hideFromScreenShare ? .none : .readOnly
+        let type = ScreenShareVisibilityController.shared.sharingType(
+            hideFromScreenShareByDefault: hideFromScreenShare,
+            temporaryVisibilityEnabled: temporaryScreenshotVisibilityEnabled
+        )
         for window in NSApp.windows {
             window.sharingType = type
         }
+    }
+
+    func setTemporaryScreenshotVisibilityEnabled(_ enabled: Bool) {
+        temporaryScreenshotVisibilityEnabled = enabled
+        applyScreenShareVisibility()
+    }
+
+    func resetTemporaryScreenshotVisibility() {
+        guard temporaryScreenshotVisibilityEnabled else { return }
+        temporaryScreenshotVisibilityEnabled = false
+        applyScreenShareVisibility()
+    }
+
+    func noteAISuccess(feature: String) {
+        lastAISuccessAt = .now
+        lastAISuccessFeature = feature
+        lastAIError = nil
+    }
+
+    func noteAIError(_ message: String) {
+        lastAIError = message
+    }
+
+    func setAIConnectionTestState(_ state: AIConnectionTestState) {
+        aiConnectionTestState = state
     }
 
     // MARK: - Spotlight Indexing
