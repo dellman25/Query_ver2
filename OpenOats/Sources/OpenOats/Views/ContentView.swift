@@ -13,257 +13,57 @@ struct ContentView: View {
     @State private var overlayManager = OverlayManager()
     @State private var miniBarManager = MiniBarManager()
     @State private var liveSessionController: LiveSessionController?
-    @AppStorage("isTranscriptExpanded") private var isTranscriptExpanded = true
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showOnboarding = false
     @State private var showConsentSheet = false
-    @State private var pendingControlBarAction: ControlBarAction?
+    @State private var deferredConsentAction: ControlBarAction?
+
+    // MARK: - Interview Session State
+
+    @State private var sessionTitle = ""
+    @State private var interviewSetup = InterviewSetup()
+    @State private var sessionNotes: [BANote] = []
+    @State private var interviewTags: [InterviewTag] = []
+    @State private var screenshots: [ScreenshotCapture] = []
 
     var body: some View {
         bodyWithModifiers
     }
 
+    // MARK: - Root Content Router
+
     private var rootContent: some View {
         let controllerState = liveSessionController?.state ?? LiveSessionState()
 
-        return VStack(spacing: 0) {
-            // Compact header
-            HStack {
-                Text("OpenOats")
-                    .font(.system(size: 13, weight: .semibold))
-
-                Spacer()
-
-                // KB indexing status (subtle, read-only)
-                if !controllerState.kbIndexingProgress.isEmpty {
-                    Text(controllerState.kbIndexingProgress)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Button {
-                    openWindow(id: "notes")
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "note.text")
-                            .font(.system(size: 11))
-                        Text("Past Meetings")
-                            .font(.system(size: 11))
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("View past meeting notes")
-                .accessibilityIdentifier("app.pastMeetingsButton")
-
-                SettingsLink {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 12))
-                        .padding(4)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Settings")
-                .accessibilityIdentifier("app.settingsButton")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            // Post-session banner
-            if let lastSession = controllerState.lastEndedSession, lastSession.utteranceCount > 0 {
-                HStack {
-                    Text("Session ended \u{00B7} \(lastSession.utteranceCount) utterances")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("app.sessionEndedBanner")
-                    Spacer()
-                    if controllerState.lastSessionHasNotes {
-                        Button {
-                            openWindow(id: "notes")
-                        } label: {
-                            Label("View Notes", systemImage: "doc.text")
-                                .font(.system(size: 12))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .accessibilityIdentifier("app.viewNotesButton")
-                    } else {
-                        Button {
-                            openWindow(id: "notes")
-                        } label: {
-                            Label("Generate Notes", systemImage: "sparkles")
-                                .font(.system(size: 12))
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .accessibilityIdentifier("app.generateNotesButton")
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
-
-                Divider()
-            }
-
-            // Batch transcription / import progress banner
-            if case .transcribing(let progress) = controllerState.batchStatus {
-                HStack(spacing: 8) {
-                    ProgressView(value: progress, total: 1.0)
-                        .progressViewStyle(.linear)
-                        .frame(maxWidth: .infinity)
-                    Text(controllerState.batchIsImporting
-                         ? "Importing meeting recording… \(Int(progress * 100))%"
-                         : "Enhancing transcript... \(Int(progress * 100))%")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial)
-
-                Divider()
-            } else if case .loading = controllerState.batchStatus {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(controllerState.batchIsImporting
-                         ? "Preparing to import…"
-                         : "Loading batch model...")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial)
-
-                Divider()
-            } else if case .completed = controllerState.batchStatus {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.system(size: 12))
-                    Text(controllerState.batchIsImporting
-                         ? "Meeting recording imported"
-                         : "Transcript enhanced")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial)
-
-                Divider()
-            }
-
-            // Suggestion panel status
+        return Group {
             if controllerState.isRunning {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(controllerState.isGeneratingSuggestions ? Color.orange : Color.green)
-                        .frame(width: 6, height: 6)
-                    Text("\(settings.sidebarMode == .sidecast ? "Sidecast" : "Suggestions") \(overlayManager.isVisible ? "visible" : "hidden")")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        toggleOverlay()
-                    } label: {
-                        Text(overlayManager.isVisible ? "Hide Panel" : "Show Panel")
-                            .font(.system(size: 11))
+                InterviewWorkspaceView(
+                    controllerState: controllerState,
+                    sessionTitle: sessionTitle,
+                    interviewSetup: interviewSetup,
+                    notes: $sessionNotes,
+                    interviewTags: $interviewTags,
+                    screenshots: $screenshots,
+                    onStop: { stopSession() },
+                    onMuteToggle: { liveSessionController?.toggleMicMute() },
+                    onCaptureScreenshot: { liveSessionController?.captureScreenshot() }
+                )
+            } else {
+                SessionSetupView(
+                    sessionTitle: $sessionTitle,
+                    interviewSetup: $interviewSetup,
+                    controllerState: controllerState,
+                    onStartInterview: {
+                        handleControlBarAction(.toggle)
+                    },
+                    onConfirmDownload: {
+                        handleControlBarAction(.confirmDownload)
+                    },
+                    onOpenPastInterviews: {
+                        openWindow(id: "notes")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-
-                Divider()
+                )
             }
-
-            Spacer(minLength: 0)
-
-            // Collapsible transcript (hidden when live transcript is disabled)
-            if controllerState.showLiveTranscript {
-                DisclosureGroup(isExpanded: $isTranscriptExpanded) {
-                    TranscriptView(
-                        utterances: controllerState.liveTranscript,
-                        volatileYouText: controllerState.volatileYouText,
-                        volatileThemText: controllerState.volatileThemText
-                    )
-                    .frame(height: 150)
-                } label: {
-                    HStack(spacing: 6) {
-                        Text("Transcript")
-                            .font(.system(size: 12, weight: .medium))
-                        if !controllerState.liveTranscript.isEmpty {
-                            Text("(\(controllerState.liveTranscript.count))")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.tertiary)
-                        }
-                        Spacer()
-                        if isTranscriptExpanded && !controllerState.liveTranscript.isEmpty {
-                            Button {
-                                openWindow(id: "transcript")
-                            } label: {
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                    .padding(4)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                            }
-                            .buttonStyle(.plain)
-                            .help("Open transcript in separate window")
-
-                            Button {
-                                copyTranscript()
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                    .padding(4)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                            }
-                            .buttonStyle(.plain)
-                            .help("Copy transcript")
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-            }
-
-            Divider()
-
-            // Bottom bar: live indicator + model
-            ControlBar(
-                isRunning: controllerState.isRunning,
-                audioLevel: controllerState.audioLevel,
-                isMicMuted: controllerState.isMicMuted,
-                modelDisplayName: controllerState.modelDisplayName,
-                transcriptionPrompt: controllerState.transcriptionPrompt,
-                statusMessage: controllerState.statusMessage,
-                errorMessage: controllerState.errorMessage,
-                needsDownload: controllerState.needsDownload,
-                downloadProgress: controllerState.downloadProgress,
-                downloadDetail: controllerState.downloadDetail,
-                onToggle: {
-                    pendingControlBarAction = .toggle
-                },
-                onMuteToggle: {
-                    liveSessionController?.toggleMicMute()
-                },
-                onConfirmDownload: {
-                    pendingControlBarAction = .confirmDownload
-                }
-            )
         }
     }
 
@@ -273,7 +73,7 @@ struct ContentView: View {
 
     private var sizedRootContent: some View {
         rootContent
-            .frame(minWidth: 360, maxWidth: 600, minHeight: 400)
+            .frame(minWidth: 900, minHeight: 500)
             .background(.ultraThinMaterial)
     }
 
@@ -301,9 +101,25 @@ struct ContentView: View {
             }
         }
         .onChange(of: showConsentSheet) { _, isShowing in
-            if !isShowing && settings.hasAcknowledgedRecordingConsent
-                && !(liveSessionController?.state.isRunning ?? false) {
-                liveSessionController?.startSession(settings: settings)
+            guard !isShowing else { return }
+
+            let deferredAction = deferredConsentAction
+            deferredConsentAction = nil
+
+            guard settings.hasAcknowledgedRecordingConsent,
+                  !(liveSessionController?.state.isRunning ?? false)
+            else {
+                return
+            }
+
+            if let deferredAction {
+                handleControlBarAction(deferredAction)
+            } else {
+                liveSessionController?.startSession(
+                    settings: settings,
+                    interviewSetup: interviewSetup.isEmpty ? nil : interviewSetup,
+                    title: sessionTitle.trimmingCharacters(in: .whitespaces).isEmpty ? nil : sessionTitle
+                )
             }
         }
         .task {
@@ -314,7 +130,6 @@ struct ContentView: View {
                 container.ensureServicesInitialized(settings: settings, coordinator: coordinator)
             }
 
-            // Create and wire the controller
             let controller = LiveSessionController(coordinator: coordinator, container: container)
             controller.onRunningStateChanged = { [weak miniBarManager, weak overlayManager] isRunning in
                 if isRunning {
@@ -325,7 +140,6 @@ struct ContentView: View {
                         }
                     }
                     showMiniBar(controller: controller, miniBarManager: miniBarManager)
-                    // Start the selected realtime sidebar and show the overlay.
                     if settings.sidebarMode == .classicSuggestions {
                         coordinator.suggestionEngine?.startPreFetching()
                     }
@@ -334,13 +148,15 @@ struct ContentView: View {
                     }
                 } else {
                     miniBarManager?.hide()
-                    // Stop the classic pre-fetcher and hide the panel after delay.
                     coordinator.suggestionEngine?.stopPreFetching()
                     overlayManager?.hideAfterDelay(seconds: 2)
                 }
             }
             controller.openNotesWindow = {
                 openWindow(id: "notes")
+            }
+            controller.onScreenshotCaptured = { [self] capture in
+                screenshots.append(capture)
             }
             controller.onMiniBarContentUpdate = { [weak controller, weak miniBarManager] in
                 showMiniBar(controller: controller, miniBarManager: miniBarManager)
@@ -358,13 +174,11 @@ struct ContentView: View {
 
             await controller.performInitialSetup()
 
-            // Setup meeting detection if enabled
             if settings.meetingAutoDetectEnabled {
                 container.enableDetection(settings: settings, coordinator: coordinator)
                 await container.detectionController?.evaluateImmediate()
             }
 
-            // Start the 100ms polling loop (runs until task cancelled)
             await controller.runPollingLoop(settings: settings)
         }
         .onChange(of: settings.meetingAutoDetectEnabled) {
@@ -397,11 +211,6 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .toggleSuggestionPanel)) { _ in
             toggleOverlay()
         }
-        .onChange(of: pendingControlBarAction) {
-            guard let action = pendingControlBarAction else { return }
-            pendingControlBarAction = nil
-            handleControlBarAction(action)
-        }
     }
 
     // MARK: - Actions
@@ -413,11 +222,23 @@ struct ContentView: View {
             }
             return
         }
-        liveSessionController?.startSession(settings: settings)
+        liveSessionController?.startSession(
+            settings: settings,
+            interviewSetup: interviewSetup.isEmpty ? nil : interviewSetup,
+            title: sessionTitle.trimmingCharacters(in: .whitespaces).isEmpty ? nil : sessionTitle
+        )
     }
 
     private func stopSession() {
+        liveSessionController?.saveInterviewArtifacts(
+            notes: sessionNotes,
+            tags: interviewTags,
+            screenshots: screenshots
+        )
         liveSessionController?.stopSession(settings: settings)
+        sessionNotes = []
+        interviewTags = []
+        screenshots = []
     }
 
     private func showMiniBar(controller: LiveSessionController?, miniBarManager: MiniBarManager?) {
@@ -452,19 +273,16 @@ struct ContentView: View {
         SidecastPanelContent(settings: settings, engine: coordinator.sidecastEngine)
     }
 
-    private func copyTranscript() {
-        guard let controller = liveSessionController else { return }
-        let timeFmt = DateFormatter()
-        timeFmt.dateFormat = "HH:mm:ss"
-        let lines = controller.state.liveTranscript.map { u in
-            "[\(timeFmt.string(from: u.timestamp))] \(u.speaker.displayLabel): \(u.displayText)"
-        }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
-    }
-
     @MainActor
     private func handleControlBarAction(_ action: ControlBarAction) {
+        guard settings.hasAcknowledgedRecordingConsent else {
+            deferredConsentAction = action
+            withAnimation(.easeInOut(duration: 0.25)) {
+                showConsentSheet = true
+            }
+            return
+        }
+
         switch action {
         case .toggle:
             if liveSessionController?.state.isRunning ?? false {
@@ -473,13 +291,21 @@ struct ContentView: View {
                 startSession()
             }
         case .confirmDownload:
-            guard settings.hasAcknowledgedRecordingConsent else {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    showConsentSheet = true
-                }
-                return
-            }
-            liveSessionController?.confirmDownloadAndStart(settings: settings)
+            liveSessionController?.confirmDownloadAndStart(
+                settings: settings,
+                interviewSetup: interviewSetup.isEmpty ? nil : interviewSetup,
+                title: sessionTitle.trimmingCharacters(in: .whitespaces).isEmpty ? nil : sessionTitle
+            )
         }
+    }
+}
+
+// MARK: - InterviewSetup Convenience
+
+extension InterviewSetup {
+    var isEmpty: Bool {
+        processArea.trimmingCharacters(in: .whitespaces).isEmpty
+        && intervieweeRole.trimmingCharacters(in: .whitespaces).isEmpty
+        && objective.trimmingCharacters(in: .whitespaces).isEmpty
     }
 }

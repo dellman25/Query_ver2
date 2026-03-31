@@ -5,7 +5,7 @@ import os.log
 /// Sends a POST request to a user-configured webhook URL when a meeting ends.
 /// Uses only data that already exists at session finalization time.
 enum WebhookService {
-    private static let logger = Logger(subsystem: "com.openoats.app", category: "Webhook")
+    private static let logger = Logger(subsystem: "com.query.app", category: "Webhook")
 
     struct Payload: Codable {
         let sessionID: String
@@ -75,7 +75,7 @@ enum WebhookService {
 
         if !secret.isEmpty {
             let signature = hmacSHA256(data: body, key: secret)
-            request.setValue("sha256=\(signature)", forHTTPHeaderField: "X-OpenOats-Signature")
+            request.setValue("sha256=\(signature)", forHTTPHeaderField: "X-Query-Signature")
         }
 
         request.httpBody = body

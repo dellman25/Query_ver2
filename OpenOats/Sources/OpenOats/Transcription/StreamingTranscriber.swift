@@ -11,7 +11,7 @@ final class StreamingTranscriber: @unchecked Sendable {
     private let speaker: Speaker
     private let onPartial: @Sendable (String) -> Void
     private let onFinal: @Sendable (String) -> Void
-    private let log = Logger(subsystem: "com.openoats", category: "StreamingTranscriber")
+    private let log = Logger(subsystem: "com.query.app", category: "StreamingTranscriber")
 
     /// Resampler from source format to 16kHz mono Float32.
     private var converter: AVAudioConverter?
@@ -63,9 +63,28 @@ final class StreamingTranscriber: @unchecked Sendable {
         var bufferCount = 0
         var lastPartialTime: Date = .distantPast
         var isRunningPartial = false
+        var didLogFirstBuffer = false
+        var didLogSpeechStart = false
 
         for await buffer in stream {
             bufferCount += 1
+            if !didLogFirstBuffer, speaker == .them {
+                didLogFirstBuffer = true
+                // #region agent log
+                agentDebugLog(
+                    runId: "initial",
+                    hypothesisId: "H3",
+                    location: "StreamingTranscriber.run",
+                    message: "System transcriber received first buffer",
+                    data: [
+                        "speaker": speaker.storageKey,
+                        "bufferCount": String(bufferCount),
+                        "frameLength": String(buffer.frameLength),
+                        "sampleRate": String(buffer.format.sampleRate)
+                    ]
+                )
+                // #endregion
+            }
             if bufferCount <= 3 {
                 let fmt = buffer.format
                 diagLog("[\(speaker.storageKey)] buffer #\(bufferCount): frames=\(buffer.frameLength) sr=\(fmt.sampleRate) ch=\(fmt.channelCount) interleaved=\(fmt.isInterleaved) common=\(fmt.commonFormat.rawValue)")
@@ -111,6 +130,22 @@ final class StreamingTranscriber: @unchecked Sendable {
                                 startedSpeech = true
                                 speechSamples = recentChunks.suffix(Self.prerollChunkCount).flatMap { $0 }
                                 diagLog("[\(self.speaker.storageKey)] speech start")
+                                if !didLogSpeechStart, speaker == .them {
+                                    didLogSpeechStart = true
+                                    // #region agent log
+                                    agentDebugLog(
+                                        runId: "initial",
+                                        hypothesisId: "H3",
+                                        location: "StreamingTranscriber.run",
+                                        message: "System transcriber detected speech",
+                                        data: [
+                                            "speaker": speaker.storageKey,
+                                            "bufferCount": String(bufferCount),
+                                            "samplesBuffered": String(speechSamples.count)
+                                        ]
+                                    )
+                                    // #endregion
+                                }
                             }
 
                         case .speechEnd:

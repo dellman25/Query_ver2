@@ -20,6 +20,8 @@ struct NotesView: View {
     enum DetailViewMode: String, CaseIterable {
         case transcript = "Transcript"
         case notes = "Notes"
+        case timeline = "Timeline"
+        case summary = "Summary"
     }
 
     @State private var detailViewMode: DetailViewMode = .transcript
@@ -159,7 +161,7 @@ struct NotesView: View {
             }
         }
         .frame(maxHeight: .infinity)
-        .alert("Delete Meeting?", isPresented: $showDeleteConfirmation) {
+        .alert("Delete Session?", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 if let id = sessionToDelete {
                     controller.deleteSession(sessionID: id)
@@ -169,7 +171,7 @@ struct NotesView: View {
         } message: {
             Text("This will permanently delete the transcript and any generated notes.")
         }
-        .alert("Delete \(bulkDeleteSelection.count) Meetings?", isPresented: $showBulkDeleteConfirmation) {
+        .alert("Delete \(bulkDeleteSelection.count) Sessions?", isPresented: $showBulkDeleteConfirmation) {
             Button("Delete \(bulkDeleteSelection.count)", role: .destructive) {
                 controller.deleteSessions(sessionIDs: bulkDeleteSelection)
                 bulkDeleteMode = false
@@ -404,6 +406,10 @@ struct NotesView: View {
                         .keyboardShortcut("1", modifiers: .command)
                     Button("") { detailViewMode = .notes }
                         .keyboardShortcut("2", modifiers: .command)
+                    Button("") { detailViewMode = .timeline }
+                        .keyboardShortcut("3", modifiers: .command)
+                    Button("") { detailViewMode = .summary }
+                        .keyboardShortcut("4", modifiers: .command)
                 }
                 .frame(width: 0, height: 0)
                 .opacity(0)
@@ -448,6 +454,10 @@ struct NotesView: View {
                 transcriptToolbarActions(controller: controller, state: state)
             } else if detailViewMode == .notes {
                 notesToolbarActions(controller: controller, state: state)
+            } else if detailViewMode == .timeline {
+                timelineToolbarInfo(state: state)
+            } else if detailViewMode == .summary {
+                summaryToolbarActions(controller: controller, state: state)
             }
 
             if state.audioFileURL != nil {
@@ -672,6 +682,10 @@ struct NotesView: View {
                 transcriptView(controller: controller, state: state)
             case .notes:
                 notesTab(controller: controller, state: state, sessionID: sessionID)
+            case .timeline:
+                timelineTab(state: state)
+            case .summary:
+                summaryTab(controller: controller, state: state)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -727,7 +741,7 @@ struct NotesView: View {
         ContentUnavailableView {
             Label("Generate Notes", systemImage: "sparkles")
         } description: {
-            Text("Summarize this transcript into structured meeting notes.")
+            Text("Summarize this transcript into structured interview notes.")
         } actions: {
             if case .error(let error) = state.notesGenerationStatus {
                 Text(error)
@@ -823,6 +837,303 @@ struct NotesView: View {
             return state.loadedTranscript.isEmpty
         case .notes:
             return state.loadedNotes == nil
+        case .timeline:
+            return state.loadedTranscript.isEmpty && !state.hasInterviewArtifacts
+        case .summary:
+            return state.summaryArtifact == nil
+        }
+    }
+
+    // MARK: - Summary Tab
+
+    @ViewBuilder
+    private func summaryToolbarActions(controller: NotesController, state: NotesState) -> some View {
+        if case .generating = state.summaryGenerationStatus {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Generating…")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        } else if state.summaryArtifact != nil {
+            Button {
+                controller.generateSummary()
+            } label: {
+                Label("Regenerate", systemImage: "arrow.clockwise")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                controller.exportSummary()
+            } label: {
+                Label("Export Markdown", systemImage: "square.and.arrow.up")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.borderedProminent)
+        } else {
+            Button {
+                controller.generateSummary()
+            } label: {
+                Label("Generate Summary", systemImage: "sparkles")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(state.loadedTranscript.isEmpty && !state.hasInterviewArtifacts)
+        }
+    }
+
+    @ViewBuilder
+    private func summaryTab(controller: NotesController, state: NotesState) -> some View {
+        switch state.summaryGenerationStatus {
+        case .generating:
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Generating summary…")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    if let summary = state.summaryArtifact {
+                        markdownContent(summary.markdown, sessionDirectory: state.selectedSessionDirectory)
+                    }
+                }
+                .padding(16)
+            }
+        case .idle, .completed, .error:
+            if let summary = state.summaryArtifact {
+                ScrollView {
+                    markdownContent(summary.markdown, sessionDirectory: state.selectedSessionDirectory)
+                        .padding(16)
+                }
+            } else {
+                ContentUnavailableView {
+                    Label("Generate Summary", systemImage: "doc.text.magnifyingglass")
+                } description: {
+                    Text("Create a structured markdown summary with extracted requirement objects and evidence links.")
+                } actions: {
+                    if case .error(let error) = state.summaryGenerationStatus {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.system(size: 12))
+                    }
+
+                    Button {
+                        controller.generateSummary()
+                    } label: {
+                        Label("Generate Summary", systemImage: "sparkles")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(state.loadedTranscript.isEmpty && !state.hasInterviewArtifacts)
+                }
+            }
+        }
+    }
+
+    // MARK: - Timeline Tab
+
+    @ViewBuilder
+    private func timelineToolbarInfo(state: NotesState) -> some View {
+        let noteCount = state.baNotes.count
+        let tagCount = state.interviewTags.count
+        let shotCount = state.screenshots.count
+
+        HStack(spacing: 12) {
+            if noteCount > 0 {
+                Label("\(noteCount)", systemImage: "pencil.line")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            if tagCount > 0 {
+                Label("\(tagCount)", systemImage: "tag")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            if shotCount > 0 {
+                Label("\(shotCount)", systemImage: "camera.viewfinder")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func timelineTab(state: NotesState) -> some View {
+        let events = Self.buildReviewTimeline(state: state)
+        if events.isEmpty {
+            ContentUnavailableView(
+                "No Timeline Data",
+                systemImage: "clock",
+                description: Text("This session has no transcript or interview artifacts.")
+            )
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(events) { event in
+                        reviewTimelineRow(event, sessionDirectory: state.selectedSessionDirectory)
+                    }
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    static func buildReviewTimeline(state: NotesState) -> [TimelineEvent] {
+        var events: [TimelineEvent] = []
+        for record in state.loadedTranscript {
+            let u = Utterance(
+                text: record.text,
+                speaker: record.speaker,
+                timestamp: record.timestamp,
+                refinedText: record.refinedText
+            )
+            events.append(.transcript(u))
+        }
+        for note in state.baNotes {
+            events.append(.note(note))
+        }
+        for tag in state.interviewTags {
+            events.append(.tag(tag))
+        }
+        for shot in state.screenshots {
+            events.append(.screenshot(shot))
+        }
+        return events.sorted { $0.timestamp < $1.timestamp }
+    }
+
+    @ViewBuilder
+    private func reviewTimelineRow(_ event: TimelineEvent, sessionDirectory: URL?) -> some View {
+        switch event {
+        case .transcript(let u):
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(Self.transcriptTimeFormatter.string(from: u.timestamp))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 56, alignment: .trailing)
+
+                Text(u.speaker.displayLabel)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(u.speaker.color)
+                    .frame(minWidth: 36, alignment: .trailing)
+
+                Text(u.displayText)
+                    .font(.system(size: 13))
+                    .textSelection(.enabled)
+            }
+            .padding(.vertical, 2)
+
+        case .note(let note):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(Self.transcriptTimeFormatter.string(from: note.timestamp))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 56, alignment: .trailing)
+
+                    Image(systemName: "pencil.line")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(minWidth: 36, alignment: .trailing)
+
+                    Text(note.text)
+                        .font(.system(size: 13, weight: .medium))
+                        .textSelection(.enabled)
+                }
+
+                if !note.tags.isEmpty {
+                    HStack(spacing: 4) {
+                        Spacer().frame(width: 56 + 8 + 36 + 8)
+                        ForEach(note.tags, id: \.rawValue) { tag in
+                            HStack(spacing: 2) {
+                                Image(systemName: tag.systemImage)
+                                    .font(.system(size: 8))
+                                Text(tag.displayLabel)
+                                    .font(.system(size: 9, weight: .medium))
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.08))
+                            .foregroundStyle(Color.accentColor)
+                            .clipShape(Capsule())
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 4)
+            .background(Color.accentColor.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+
+        case .tag(let tag):
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(Self.transcriptTimeFormatter.string(from: tag.timestamp))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 56, alignment: .trailing)
+
+                HStack(spacing: 3) {
+                    Image(systemName: tag.kind.systemImage)
+                        .font(.system(size: 9))
+                    Text(tag.kind.displayLabel)
+                        .font(.system(size: 10, weight: .medium))
+                    if let label = tag.label, !label.isEmpty {
+                        Text("\u{00B7} \(label)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.orange.opacity(0.7))
+                    }
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color.orange.opacity(0.08))
+                .foregroundStyle(.orange)
+                .clipShape(Capsule())
+            }
+            .padding(.vertical, 2)
+
+        case .screenshot(let capture):
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(Self.transcriptTimeFormatter.string(from: capture.timestamp))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 56, alignment: .trailing)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 10))
+                        Text(capture.label ?? "Screenshot")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.purple.opacity(0.08))
+                    .foregroundStyle(.purple)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+
+                if let dir = sessionDirectory {
+                    let imageURL = dir.appendingPathComponent(capture.relativePath)
+                    if let nsImage = NSImage(contentsOf: imageURL) {
+                        HStack {
+                            Spacer().frame(width: 56 + 8)
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: 400, maxHeight: 250)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(.quaternary, lineWidth: 1)
+                                )
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 4)
         }
     }
 
@@ -974,10 +1285,35 @@ struct NotesView: View {
             }.joined(separator: "\n")
         case .notes:
             text = state.loadedNotes?.markdown ?? ""
+        case .timeline:
+            text = buildTimelineExportText(state: state)
+        case .summary:
+            text = state.summaryArtifact?.markdown ?? ""
         }
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func buildTimelineExportText(state: NotesState) -> String {
+        let events = Self.buildReviewTimeline(state: state)
+        let tf = Self.transcriptTimeFormatter
+        return events.map { event -> String in
+            let time = tf.string(from: event.timestamp)
+            switch event {
+            case .transcript(let u):
+                return "[\(time)] \(u.speaker.displayLabel): \(u.displayText)"
+            case .note(let n):
+                let tagStr = n.tags.isEmpty ? "" : " [\(n.tags.map(\.displayLabel).joined(separator: ", "))]"
+                return "[\(time)] NOTE: \(n.text)\(tagStr)"
+            case .tag(let t):
+                let label = t.label.map { " \u{2013} \($0)" } ?? ""
+                return "[\(time)] TAG: \(t.kind.displayLabel)\(label)"
+            case .screenshot(let s):
+                let label = s.label ?? "Screenshot"
+                return "[\(time)] SCREENSHOT: \(label)"
+            }
+        }.joined(separator: "\n")
     }
 
     private static let transcriptTimeFormatter: DateFormatter = {

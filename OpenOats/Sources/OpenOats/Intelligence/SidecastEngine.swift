@@ -330,31 +330,17 @@ final class SidecastEngine {
         switch settings.llmProvider {
         case .openRouter:
             return !settings.openRouterApiKey.isEmpty
-        case .ollama, .mlx, .openAICompatible:
+        case .ollama, .mlx, .lmStudio, .openAICompatible:
             return llmBaseURL != nil
         }
     }
 
     private var llmApiKey: String? {
-        switch settings.llmProvider {
-        case .openRouter: settings.openRouterApiKey
-        case .ollama: nil
-        case .mlx: nil
-        case .openAICompatible:
-            settings.openAILLMApiKey.isEmpty ? nil : settings.openAILLMApiKey
-        }
+        settings.activeLLMApiKey
     }
 
     private var llmBaseURL: URL? {
-        switch settings.llmProvider {
-        case .openRouter: nil
-        case .ollama:
-            OpenRouterClient.chatCompletionsURL(from: settings.ollamaBaseURL)
-        case .mlx:
-            OpenRouterClient.chatCompletionsURL(from: settings.mlxBaseURL)
-        case .openAICompatible:
-            OpenRouterClient.chatCompletionsURL(from: settings.openAILLMBaseURL)
-        }
+        settings.llmProvider == .openRouter ? nil : settings.activeLLMChatCompletionsURL
     }
 }
 

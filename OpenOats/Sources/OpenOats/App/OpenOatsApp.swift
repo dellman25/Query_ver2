@@ -24,7 +24,7 @@ public struct OpenOatsRootApp: App {
     }
 
     public var body: some Scene {
-        Window("OpenOats", id: "main") {
+        Window("Query", id: "main") {
             ContentView(settings: settings)
                 .environment(container)
                 .environment(coordinator)
@@ -61,8 +61,8 @@ public struct OpenOatsRootApp: App {
                 }
         }
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 320, height: 560)
+        .windowResizability(.automatic)
+        .defaultSize(width: 1100, height: 700)
         .commands {
             CommandGroup(after: .appInfo) {
                 if case .live = container.mode {
@@ -71,27 +71,21 @@ public struct OpenOatsRootApp: App {
                     Divider()
                 }
 
-                Button("Toggle Meeting") {
+                Button("Toggle Interview") {
                     appDelegate.toggleMeeting()
                 }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
 
-                Button("Past Meetings") {
+                Button("Past Interviews") {
                     openNotesWindow()
                 }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
 
-                Button("Import Meeting Recording...") {
+                Button("Import Recording\u{2026}") {
                     importMeetingRecording()
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(coordinator.isRecording || isBatchEngineBusy)
-
-                Button("GitHub Repository...") {
-                    if let url = URL(string: "https://github.com/yazinsai/OpenOats") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
             }
         }
 
@@ -137,7 +131,7 @@ extension OpenOatsRootApp {
 
     private func importMeetingRecording() {
         let panel = NSOpenPanel()
-        panel.title = "Import Meeting Recording"
+        panel.title = "Import Interview Recording"
         panel.allowedContentTypes = [
             .audio,
             .init(filenameExtension: "m4a")!,
@@ -259,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private var isUITest: Bool {
-        ProcessInfo.processInfo.environment["OPENOATS_UI_TEST"] != nil
+        ProcessInfo.processInfo.environment["QUERY_UI_TEST"] != nil
     }
 
     private var globalHotkeyMonitor: Any?
@@ -376,8 +370,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard granted == true else { return }
 
             let content = UNMutableNotificationContent()
-            content.title = "OpenOats is still running"
-            content.body = "Meeting detection is active. Click the menu bar icon to access controls."
+            content.title = "Query is still running"
+            content.body = "Interview detection is active. Click the menu bar icon to access controls."
 
             let request = UNNotificationRequest(
                 identifier: "background-mode-hint",

@@ -2,7 +2,7 @@ import FluidAudio
 import Foundation
 import os
 
-private let diarizationLog = Logger(subsystem: "com.openoats.app", category: "Diarization")
+private let diarizationLog = Logger(subsystem: "com.query.app", category: "Diarization")
 
 /// Manages LS-EEND speaker diarization for system audio.
 /// Wraps the FluidAudio LSEENDDiarizer and provides speaker attribution

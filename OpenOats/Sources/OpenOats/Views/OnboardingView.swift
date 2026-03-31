@@ -7,23 +7,23 @@ struct OnboardingView: View {
     private let steps: [(icon: String, title: String, body: String)] = [
         (
             "waveform.circle",
-            "Welcome to OpenOats",
-            "A real-time meeting copilot that detects your meetings, transcribes conversations, and generates smart talking points — all running locally on your Mac."
+            "Welcome to Query",
+            "An interview assistant that transcribes conversations in real time, captures evidence, and guides your questioning toward higher-value discovery — all running locally on your Mac."
         ),
         (
             "text.quote",
             "Live Transcript",
-            "Your conversation is transcribed in real time. \"You\" captures your mic, \"Them\" captures system audio from the other side. Expand the transcript panel to follow along."
+            "Your interview is transcribed in real time. \"You\" captures your mic, \"Them\" captures system audio from the other side. Expand the transcript panel to follow along."
         ),
         (
             "lightbulb",
-            "AI Suggestions",
-            "As the conversation progresses, OpenOats pulls relevant context from your knowledge base and suggests talking points. The best suggestions surface automatically."
+            "Interview Guidance",
+            "As the conversation progresses, Query analyzes what\u{2019}s been captured and suggests questioning shifts to help you uncover business rules, exceptions, and controls."
         ),
         (
-            "rectangle.on.rectangle",
-            "Floating Overlay",
-            "Use the overlay button to pop out a compact floating panel — it stays on top of your meeting app so you can glance at suggestions without switching windows."
+            "doc.text.magnifyingglass",
+            "Structured Extraction",
+            "After the interview, generate a structured summary with extracted requirements, business rules, and open questions \u{2014} all linked back to transcript evidence."
         ),
     ]
 

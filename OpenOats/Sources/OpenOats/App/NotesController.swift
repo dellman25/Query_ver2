@@ -11,6 +11,7 @@ struct NotesState {
     var loadedTranscript: [SessionRecord] = []
     var loadedNotes: EnhancedNotes?
     var notesGenerationStatus: GenerationStatus = .idle
+    var summaryGenerationStatus: GenerationStatus = .idle
     var cleanupStatus: CleanupStatus = .idle
     var selectedTemplate: MeetingTemplate?
     var showingOriginal: Bool = false
@@ -24,6 +25,19 @@ struct NotesState {
     var audioFileURL: URL?
     /// Whether audio is currently playing.
     var isPlayingAudio: Bool = false
+
+    // MARK: - Interview Artifacts
+
+    var interviewSetup: InterviewSetup?
+    var baNotes: [BANote] = []
+    var interviewTags: [InterviewTag] = []
+    var screenshots: [ScreenshotCapture] = []
+    var summaryArtifact: SummaryArtifact?
+
+    /// Whether this session has any interview artifacts worth showing in the timeline.
+    var hasInterviewArtifacts: Bool {
+        !baNotes.isEmpty || !interviewTags.isEmpty || !screenshots.isEmpty
+    }
 }
 
 enum CleanupStatus: Equatable {
@@ -113,12 +127,24 @@ final class NotesController {
             state.loadedTranscript = []
             state.selectedSessionDirectory = nil
             state.audioFileURL = nil
+            state.baNotes = []
+            state.interviewTags = []
+            state.screenshots = []
+            state.interviewSetup = nil
+            state.summaryArtifact = nil
+            state.summaryGenerationStatus = .idle
             return
         }
 
         state.loadedNotes = nil
         state.loadedTranscript = []
         state.audioFileURL = nil
+        state.baNotes = []
+        state.interviewTags = []
+        state.screenshots = []
+        state.interviewSetup = nil
+        state.summaryArtifact = nil
+        state.summaryGenerationStatus = .idle
         state.selectedSessionDirectory = coordinator.sessionRepository.sessionsDirectoryURL
             .appendingPathComponent(sessionID, isDirectory: true)
         state.showingOriginal = false
@@ -126,15 +152,20 @@ final class NotesController {
         syncCleanupStatus()
 
         Task {
-            let notes = await coordinator.sessionRepository.loadNotes(sessionID: sessionID)
-            let transcript = await coordinator.sessionRepository.loadTranscript(sessionID: sessionID)
+            let detail = await coordinator.sessionRepository.loadSession(id: sessionID)
             let audioURL = await coordinator.sessionRepository.audioFileURL(for: sessionID)
 
             guard state.selectedSessionID == sessionID else { return }
 
-            state.loadedNotes = notes
-            state.loadedTranscript = transcript
+            state.loadedNotes = detail.notes
+            state.loadedTranscript = detail.transcript
             state.audioFileURL = audioURL
+            state.baNotes = detail.baNotes
+            state.interviewTags = detail.interviewTags
+            state.screenshots = detail.screenshots
+            state.interviewSetup = detail.interviewSetup
+            state.summaryArtifact = detail.summaryArtifact
+            state.summaryGenerationStatus = detail.summaryArtifact == nil ? .idle : .completed
 
             let session = state.sessionHistory.first { $0.id == sessionID }
             if let snapID = session?.templateSnapshot?.id {
@@ -237,6 +268,50 @@ final class NotesController {
         coordinator.notesEngine.cancel()
         state.notesGenerationStatus = .idle
         state.streamingMarkdown = ""
+    }
+
+    // MARK: - Summary Generation
+
+    func generateSummary() {
+        guard let sessionID = state.selectedSessionID else { return }
+
+        state.summaryGenerationStatus = .generating
+        Task {
+            let summary = QuerySummaryEngine.generate(
+                context: .init(
+                    sessionID: sessionID,
+                    title: state.sessionHistory.first(where: { $0.id == sessionID })?.title,
+                    startedAt: state.loadedTranscript.first?.timestamp,
+                    interviewSetup: state.interviewSetup
+                ),
+                transcript: state.loadedTranscript,
+                notes: state.baNotes,
+                tags: state.interviewTags,
+                screenshots: state.screenshots
+            )
+            await coordinator.sessionRepository.saveSummaryArtifact(sessionID: sessionID, summary: summary)
+
+            guard state.selectedSessionID == sessionID else { return }
+            state.summaryArtifact = summary
+            state.summaryGenerationStatus = .completed
+            await loadHistory()
+        }
+    }
+
+    func exportSummary() {
+        guard let sessionID = state.selectedSessionID else { return }
+
+        Task {
+            let exportedURL = await coordinator.sessionRepository.exportSummaryMarkdown(sessionID: sessionID)
+            guard state.selectedSessionID == sessionID else { return }
+
+            if let exportedURL {
+                state.summaryGenerationStatus = .completed
+                NSWorkspace.shared.activateFileViewerSelecting([exportedURL])
+            } else {
+                state.summaryGenerationStatus = .error("Unable to export summary markdown.")
+            }
+        }
     }
 
     // MARK: - Image Insertion

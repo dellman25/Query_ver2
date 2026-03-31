@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build macOS .app for OpenOats (Swift)
+# Build macOS .app for Query (Swift)
 # Usage:
 #   ./scripts/build_swift_app.sh
 #
@@ -19,8 +19,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT_DIR="$(pwd)"
 SWIFT_DIR="$ROOT_DIR/OpenOats"
-APP_NAME="OpenOats"
-BUNDLE_ID="com.openoats.app"
+APP_NAME="Query"
+BUNDLE_ID="com.query.app"
 SKIP_SIGN="${SKIP_SIGN:-0}"
 SKIP_INSTALL="${SKIP_INSTALL:-0}"
 
@@ -29,7 +29,7 @@ echo "=== Building $APP_NAME (Swift) ==="
 # Build release binary
 cd "$SWIFT_DIR"
 swift build -c release 2>&1
-BINARY_PATH=".build/release/OpenOats"
+BINARY_PATH=".build/release/Query"
 
 if [[ ! -f "$BINARY_PATH" ]]; then
   echo "Build failed: binary not found at $BINARY_PATH"
@@ -46,11 +46,11 @@ mkdir -p "$APP_DIR/Contents/Resources"
 mkdir -p "$APP_DIR/Contents/Frameworks"
 
 # Copy binary
-cp "$BINARY_PATH" "$APP_DIR/Contents/MacOS/OpenOats"
+cp "$BINARY_PATH" "$APP_DIR/Contents/MacOS/Query"
 
 # Make the SwiftPM-built executable behave like a normal app bundle by
 # teaching dyld to search the app's embedded Frameworks directory.
-APP_BINARY="$APP_DIR/Contents/MacOS/OpenOats"
+APP_BINARY="$APP_DIR/Contents/MacOS/Query"
 if ! otool -l "$APP_BINARY" | grep -Fq "@executable_path/../Frameworks"; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
   echo "Added app Frameworks rpath to executable"

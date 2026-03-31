@@ -2,7 +2,7 @@ import Foundation
 
 enum OpenOatsDeepLink {
     static func parse(_ url: URL) -> ExternalCommand? {
-        guard let scheme = url.scheme?.lowercased(), scheme == "openoats" else {
+        guard let scheme = url.scheme?.lowercased(), scheme == "query" else {
             return nil
         }
 

@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let log = Logger(subsystem: "com.openoats.app", category: "GranolaImporter")
+private let log = Logger(subsystem: "com.query.app", category: "GranolaImporter")
 
 // MARK: - Granola API Models
 

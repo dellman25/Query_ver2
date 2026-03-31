@@ -110,7 +110,18 @@ final class LiveSessionController {
 
     // MARK: - Session Actions
 
-    func startSession(settings: AppSettings) {
+    /// Pending interview setup metadata, captured before the session starts
+    /// and consumed during `startTranscription`.
+    private(set) var pendingInterviewSetup: InterviewSetup?
+    private(set) var pendingSessionTitle: String?
+
+    func startSession(
+        settings: AppSettings,
+        interviewSetup: InterviewSetup? = nil,
+        title: String? = nil
+    ) {
+        pendingInterviewSetup = interviewSetup
+        pendingSessionTitle = title
         coordinator.suggestionEngine?.clear()
         coordinator.sidecastEngine?.clear()
         coordinator.handle(.userStarted(.manual()), settings: settings)
@@ -120,14 +131,78 @@ final class LiveSessionController {
         coordinator.handle(.userStopped, settings: settings)
     }
 
-    func confirmDownloadAndStart(settings: AppSettings) {
+    func confirmDownloadAndStart(
+        settings: AppSettings,
+        interviewSetup: InterviewSetup? = nil,
+        title: String? = nil
+    ) {
+        pendingInterviewSetup = interviewSetup
+        pendingSessionTitle = title
         coordinator.transcriptionEngine?.downloadConfirmed = true
-        startSession(settings: settings)
+        startSession(settings: settings, interviewSetup: interviewSetup, title: title)
     }
 
     func toggleMicMute() {
         guard let engine = coordinator.transcriptionEngine, engine.isRunning else { return }
         engine.isMicMuted.toggle()
+    }
+
+    /// The session ID for the currently active recording, if any.
+    var activeSessionID: String? { _currentSessionID }
+
+    /// Callback invoked on the main actor when a screenshot is captured during a live session.
+    var onScreenshotCaptured: ((_ capture: ScreenshotCapture) -> Void)?
+
+    /// Launches the macOS interactive screenshot tool (`screencapture -i`) and saves the
+    /// result into the active session's screenshots directory.
+    func captureScreenshot() {
+        guard let sessionID = _currentSessionID else { return }
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).png")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-i", tempURL.path]
+        process.terminationHandler = { [weak self] proc in
+            defer { try? FileManager.default.removeItem(at: tempURL) }
+            guard proc.terminationStatus == 0,
+                  let data = try? Data(contentsOf: tempURL) else { return }
+            Task { @MainActor [weak self] in
+                self?.handleCapturedScreenshot(data: data, sessionID: sessionID)
+            }
+        }
+        try? process.run()
+    }
+
+    @MainActor
+    private func handleCapturedScreenshot(data: Data, sessionID: String) {
+        Task {
+            let dir = await coordinator.sessionRepository.screenshotsDirectory(for: sessionID)
+            let filename = "\(UUID().uuidString).png"
+            let fileURL = dir.appendingPathComponent(filename)
+            try? data.write(to: fileURL, options: .atomic)
+
+            let capture = ScreenshotCapture(
+                relativePath: "screenshots/\(filename)",
+                nearestUtteranceID: state.liveTranscript.last?.id
+            )
+            onScreenshotCaptured?(capture)
+        }
+    }
+
+    /// Persists interview artifacts (BA notes, tags, screenshots) for the active session.
+    func saveInterviewArtifacts(
+        notes: [BANote],
+        tags: [InterviewTag],
+        screenshots: [ScreenshotCapture]
+    ) {
+        guard let sessionID = _currentSessionID else { return }
+        let repo = coordinator.sessionRepository
+        Task {
+            await repo.saveBANotes(sessionID: sessionID, notes: notes)
+            await repo.saveInterviewTags(sessionID: sessionID, tags: tags)
+            await repo.saveScreenshots(sessionID: sessionID, screenshots: screenshots)
+        }
     }
 
     // MARK: - KB Indexing
@@ -256,10 +331,37 @@ final class LiveSessionController {
         let handle = await coordinator.sessionRepository.startSession(
             config: SessionStartConfig(
                 templateID: templateID,
-                templateSnapshot: coordinator.sessionTemplateSnapshot
+                templateSnapshot: coordinator.sessionTemplateSnapshot,
+                title: pendingSessionTitle,
+                interviewSetup: pendingInterviewSetup
             )
         )
         _currentSessionID = handle.sessionID
+        pendingInterviewSetup = nil
+        pendingSessionTitle = nil
+        let detectionSignal: String = {
+            switch metadata.detectionContext?.signal {
+            case .manual: "manual"
+            case .appLaunched(let app): "appLaunched:\(app.bundleID)"
+            case .calendarEvent(let event): "calendarEvent:\(event.title)"
+            case .audioActivity: "audioActivity"
+            case nil: "nil"
+            }
+        }()
+        // #region agent log
+        agentDebugLog(
+            runId: "initial",
+            hypothesisId: "H1",
+            location: "LiveSessionController.startTranscription",
+            message: "Live session starting transcription",
+            data: [
+                "sessionID": handle.sessionID,
+                "meetingTitle": metadata.title ?? "nil",
+                "signal": detectionSignal,
+                "hasSettings": String(settings != nil)
+            ]
+        )
+        // #endregion
 
         if let settings {
             if settings.saveAudioRecording || settings.enableBatchRefinement {
@@ -463,12 +565,7 @@ final class LiveSessionController {
             coordinator.sessionHistory.first { $0.id == lastSession.id }?.hasNotes
         } ?? false
 
-        let activeModelRaw = switch settings.llmProvider {
-        case .openRouter: settings.selectedModel
-        case .ollama: settings.ollamaLLMModel
-        case .mlx: settings.mlxModel
-        case .openAICompatible: settings.openAILLMModel
-        }
+        let activeModelRaw = settings.activeLLMModel
 
         var next = LiveSessionState()
         let sidebarSuggestions: [Suggestion]

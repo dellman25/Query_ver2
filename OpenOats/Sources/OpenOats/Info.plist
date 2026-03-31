@@ -3,27 +3,27 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>OpenOats</string>
+    <string>Query</string>
     <key>CFBundleDisplayName</key>
-    <string>OpenOats</string>
+    <string>Query</string>
     <key>CFBundleIdentifier</key>
-    <string>com.openoats.app</string>
+    <string>com.query.app</string>
     <key>CFBundleVersion</key>
     <string>1.22.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.22.0</string>
     <key>CFBundleExecutable</key>
-    <string>OpenOats</string>
+    <string>Query</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.openoats.app</string>
+            <string>com.query.app</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>openoats</string>
+                <string>query</string>
             </array>
         </dict>
     </array>
@@ -32,9 +32,9 @@
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>OpenOats needs microphone access to transcribe your voice in real-time during conversations.</string>
+    <string>Query needs microphone access to transcribe your voice in real-time during interviews.</string>
     <key>NSAudioCaptureUsageDescription</key>
-    <string>OpenOats needs system audio recording access to transcribe other participants in real time.</string>
+    <string>Query needs system audio recording access to transcribe other participants in real time.</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>SUFeedURL</key>

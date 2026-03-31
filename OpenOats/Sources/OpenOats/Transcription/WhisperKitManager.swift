@@ -26,7 +26,7 @@ final class WhisperKitManager: @unchecked Sendable {
 
     private let variant: Variant
     private var pipe: WhisperKit?
-    private let log = Logger(subsystem: "com.openoats", category: "WhisperKitManager")
+    private let log = Logger(subsystem: "com.query.app", category: "WhisperKitManager")
 
     init(variant: Variant) {
         self.variant = variant

@@ -84,7 +84,12 @@ enum LegacySessionReader {
             transcript: transcript,
             liveTranscript: liveTranscript,
             notes: notes,
-            notesMeta: nil
+            notesMeta: nil,
+            interviewSetup: nil,
+            baNotes: [],
+            interviewTags: [],
+            screenshots: [],
+            summaryArtifact: nil
         )
     }
 

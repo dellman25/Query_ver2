@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let repoLog = Logger(subsystem: "com.openoats.app", category: "SessionRepository")
+private let repoLog = Logger(subsystem: "com.query.app", category: "SessionRepository")
 
 // MARK: - Supporting Types
 
@@ -13,10 +13,19 @@ typealias SessionIndexEntry = SessionIndex
 struct SessionStartConfig: Sendable {
     let templateID: UUID?
     let templateSnapshot: TemplateSnapshot?
+    let title: String?
+    let interviewSetup: InterviewSetup?
 
-    init(templateID: UUID? = nil, templateSnapshot: TemplateSnapshot? = nil) {
+    init(
+        templateID: UUID? = nil,
+        templateSnapshot: TemplateSnapshot? = nil,
+        title: String? = nil,
+        interviewSetup: InterviewSetup? = nil
+    ) {
         self.templateID = templateID
         self.templateSnapshot = templateSnapshot
+        self.title = title
+        self.interviewSetup = interviewSetup
     }
 }
 
@@ -65,6 +74,14 @@ struct SessionDetail: Sendable {
     let liveTranscript: [SessionRecord]
     let notes: EnhancedNotes?
     let notesMeta: NotesMeta?
+
+    // MARK: - Query Interview Artifacts
+
+    let interviewSetup: InterviewSetup?
+    let baNotes: [BANote]
+    let interviewTags: [InterviewTag]
+    let screenshots: [ScreenshotCapture]
+    let summaryArtifact: SummaryArtifact?
 }
 
 /// Metadata persisted alongside notes.
@@ -90,6 +107,17 @@ struct SessionMetadata: Codable, Sendable {
     var tags: [String]?
     /// How the session was created (nil for live sessions, "imported" for imported audio).
     var source: String?
+
+    // MARK: - Query Interview Fields (optional for migration safety)
+
+    /// Interview setup metadata (process area, role, objective).
+    var interviewSetup: InterviewSetup?
+    /// Number of BA notes captured.
+    var noteCount: Int?
+    /// Number of screenshots captured.
+    var screenshotCount: Int?
+    /// Whether post-interview synthesis has been generated.
+    var hasSummary: Bool?
 }
 
 // MARK: - SessionRepository
@@ -136,7 +164,7 @@ actor SessionRepository {
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
             ).first!
-            baseDirectory = appSupport.appendingPathComponent("OpenOats", isDirectory: true)
+            baseDirectory = appSupport.appendingPathComponent("Query", isDirectory: true)
         }
         sessionsDirectory = baseDirectory.appendingPathComponent("sessions", isDirectory: true)
 
@@ -194,8 +222,10 @@ actor SessionRepository {
             id: sessionID,
             startedAt: Date(),
             templateSnapshot: config.templateSnapshot,
+            title: config.title,
             utteranceCount: 0,
-            hasNotes: false
+            hasNotes: false,
+            interviewSetup: config.interviewSetup
         )
         writeSessionMetadata(metadata, sessionID: sessionID)
 
@@ -326,18 +356,25 @@ actor SessionRepository {
         // Backfill refined text into live transcript
         backfillRefinedText(sessionID: sessionID, from: metadata.utterances)
 
+        // Read existing metadata to preserve interview setup written at session start
+        let existing = loadSessionMetadataFile(sessionID: sessionID)
+
         // Write session.json with final metadata
         let sessionMeta = SessionMetadata(
             id: sessionID,
             startedAt: metadata.utterances.first?.timestamp ?? Date(),
             endedAt: metadata.endedAt,
             templateSnapshot: metadata.templateSnapshot,
-            title: metadata.title,
+            title: metadata.title ?? existing?.title,
             utteranceCount: metadata.utteranceCount,
             hasNotes: false,
             language: metadata.language,
             meetingApp: metadata.meetingApp,
-            engine: metadata.engine
+            engine: metadata.engine,
+            interviewSetup: existing?.interviewSetup,
+            noteCount: existing?.noteCount,
+            screenshotCount: existing?.screenshotCount,
+            hasSummary: existing?.hasSummary
         )
         writeSessionMetadata(sessionMeta, sessionID: sessionID)
     }
@@ -579,13 +616,22 @@ actor SessionRepository {
             let transcript = loadTranscript(sessionID: id)
             let liveTranscript = loadLiveTranscript(sessionID: id)
             let notes = loadNotes(sessionID: id)
+            let baNotes = loadBANotes(sessionID: id)
+            let interviewTags = loadInterviewTags(sessionID: id)
+            let screenshots = loadScreenshots(sessionID: id)
+            let summaryArtifact = loadSummaryArtifact(sessionID: id)
 
             return SessionDetail(
                 index: index,
                 transcript: transcript,
                 liveTranscript: liveTranscript,
                 notes: notes,
-                notesMeta: nil
+                notesMeta: nil,
+                interviewSetup: meta.interviewSetup,
+                baNotes: baNotes,
+                interviewTags: interviewTags,
+                screenshots: screenshots,
+                summaryArtifact: summaryArtifact
             )
         }
 
@@ -779,7 +825,7 @@ actor SessionRepository {
         let headerFmt = DateFormatter()
         headerFmt.dateStyle = .medium
         headerFmt.timeStyle = .short
-        var result = "OpenOats - \(headerFmt.string(from: startDate))\n\n"
+        var result = "Query - \(headerFmt.string(from: startDate))\n\n"
 
         let timeFmt = DateFormatter()
         timeFmt.dateFormat = "HH:mm:ss"
@@ -1079,6 +1125,148 @@ actor SessionRepository {
         }
 
         return anyUpdated
+    }
+
+    // MARK: - Query Interview Artifacts
+
+    /// Canonical layout extension for Query interview artifacts:
+    /// ```
+    /// sessions/<id>/ba-notes.json
+    /// sessions/<id>/interview-tags.json
+    /// sessions/<id>/screenshots.json
+    /// sessions/<id>/screenshots/
+    /// sessions/<id>/summary.json
+    /// ```
+
+    func saveBANotes(sessionID: String, notes: [BANote]) {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("ba-notes.json")
+        if let data = try? encoder.encode(notes) {
+            try? data.write(to: url, options: .atomic)
+        }
+        updateSessionMetadata(sessionID: sessionID) { meta in
+            meta.noteCount = notes.count
+        }
+    }
+
+    func loadBANotes(sessionID: String) -> [BANote] {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("ba-notes.json")
+        guard let data = try? Data(contentsOf: url),
+              let notes = try? decoder.decode([BANote].self, from: data) else { return [] }
+        return notes
+    }
+
+    func saveInterviewTags(sessionID: String, tags: [InterviewTag]) {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("interview-tags.json")
+        if let data = try? encoder.encode(tags) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    func loadInterviewTags(sessionID: String) -> [InterviewTag] {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("interview-tags.json")
+        guard let data = try? Data(contentsOf: url),
+              let tags = try? decoder.decode([InterviewTag].self, from: data) else { return [] }
+        return tags
+    }
+
+    func saveScreenshots(sessionID: String, screenshots: [ScreenshotCapture]) {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("screenshots.json")
+        if let data = try? encoder.encode(screenshots) {
+            try? data.write(to: url, options: .atomic)
+        }
+        updateSessionMetadata(sessionID: sessionID) { meta in
+            meta.screenshotCount = screenshots.count
+        }
+    }
+
+    func loadScreenshots(sessionID: String) -> [ScreenshotCapture] {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("screenshots.json")
+        guard let data = try? Data(contentsOf: url),
+              let screenshots = try? decoder.decode([ScreenshotCapture].self, from: data) else { return [] }
+        return screenshots
+    }
+
+    /// Returns the directory for storing screenshot images within a session.
+    func screenshotsDirectory(for sessionID: String) -> URL {
+        let dir = sessionDirectory(for: sessionID).appendingPathComponent("screenshots", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    func saveSummaryArtifact(sessionID: String, summary: SummaryArtifact) {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("summary.json")
+        if let data = try? encoder.encode(summary) {
+            try? data.write(to: url, options: .atomic)
+        }
+        let markdownURL = summaryMarkdownURL(for: sessionID)
+        try? summary.markdown.write(to: markdownURL, atomically: true, encoding: .utf8)
+        updateSessionMetadata(sessionID: sessionID) { meta in
+            meta.hasSummary = true
+        }
+    }
+
+    func loadSummaryArtifact(sessionID: String) -> SummaryArtifact? {
+        let url = sessionDirectory(for: sessionID).appendingPathComponent("summary.json")
+        guard let data = try? Data(contentsOf: url),
+              let summary = try? decoder.decode(SummaryArtifact.self, from: data) else { return nil }
+        return summary
+    }
+
+    func exportSummaryMarkdown(sessionID: String) -> URL? {
+        guard let outputDir = notesFolderPath,
+              let summary = loadSummaryArtifact(sessionID: sessionID),
+              let meta = loadSessionMetadataFile(sessionID: sessionID) else {
+            return nil
+        }
+
+        try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+        let exportURL = resolveSummaryExportURL(
+            title: meta.title,
+            startedAt: meta.startedAt,
+            outputDirectory: outputDir
+        )
+        do {
+            try summary.markdown.write(to: exportURL, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: exportURL.path)
+            return exportURL
+        } catch {
+            repoLog.error("Failed to export summary markdown: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    func saveInterviewSetup(sessionID: String, setup: InterviewSetup) {
+        updateSessionMetadata(sessionID: sessionID) { meta in
+            meta.interviewSetup = setup
+        }
+    }
+
+    private func updateSessionMetadata(sessionID: String, update: (inout SessionMetadata) -> Void) {
+        guard var meta = loadSessionMetadataFile(sessionID: sessionID) else { return }
+        update(&meta)
+        writeSessionMetadata(meta, sessionID: sessionID)
+    }
+
+    private func summaryMarkdownURL(for sessionID: String) -> URL {
+        sessionDirectory(for: sessionID).appendingPathComponent("summary.md")
+    }
+
+    private func resolveSummaryExportURL(title: String?, startedAt: Date, outputDirectory: URL) -> URL {
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "yyyy-MM-dd-HHmm"
+        dateFmt.timeZone = TimeZone.current
+        let prefix = dateFmt.string(from: startedAt)
+        let slug = MarkdownMeetingWriter.toKebabCase(title ?? "interview-summary")
+        let baseName = "\(prefix)-\(slug)-summary"
+
+        let fm = FileManager.default
+        var candidate = outputDirectory.appendingPathComponent("\(baseName).md")
+        var counter = 2
+        while fm.fileExists(atPath: candidate.path) {
+            candidate = outputDirectory.appendingPathComponent("\(baseName)-\(counter).md")
+            counter += 1
+        }
+        return candidate
     }
 
     // MARK: - Notes Folder Mirroring

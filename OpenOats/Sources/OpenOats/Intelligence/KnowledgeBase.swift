@@ -75,7 +75,7 @@ final class KnowledgeBase {
 
     private nonisolated static func cacheURL() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("OpenOats")
+        let dir = appSupport.appendingPathComponent("Query")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("kb_cache.json")
     }
@@ -505,9 +505,11 @@ final class KnowledgeBase {
         case .voyageAI:
             return "voyageAI"
         case .ollama:
-            return "ollama|\(settings.ollamaBaseURL)|\(settings.ollamaEmbedModel)"
+            return "ollama|\(settings.activeEmbeddingBaseURLString ?? "")|\(settings.activeEmbeddingModel)"
+        case .lmStudio:
+            return "lmStudio|\(settings.activeEmbeddingBaseURLString ?? "")|\(settings.activeEmbeddingModel)"
         case .openAICompatible:
-            return "openAI|\(settings.openAIEmbedBaseURL)|\(settings.openAIEmbedModel)"
+            return "openAI|\(settings.activeEmbeddingBaseURLString ?? "")|\(settings.activeEmbeddingModel)"
         }
     }
 
@@ -525,15 +527,23 @@ final class KnowledgeBase {
         case .ollama:
             return try await ollamaEmbedClient.embed(
                 texts: texts,
-                baseURL: settings.ollamaBaseURL,
-                model: settings.ollamaEmbedModel
+                baseURL: settings.activeEmbeddingBaseURLString ?? "",
+                model: settings.activeEmbeddingModel,
+                apiKey: settings.activeEmbeddingApiKey
+            )
+        case .lmStudio:
+            return try await ollamaEmbedClient.embed(
+                texts: texts,
+                baseURL: settings.activeEmbeddingBaseURLString ?? "",
+                model: settings.activeEmbeddingModel,
+                apiKey: settings.activeEmbeddingApiKey
             )
         case .openAICompatible:
             return try await ollamaEmbedClient.embed(
                 texts: texts,
-                baseURL: settings.openAIEmbedBaseURL,
-                model: settings.openAIEmbedModel,
-                apiKey: settings.openAIEmbedApiKey
+                baseURL: settings.activeEmbeddingBaseURLString ?? "",
+                model: settings.activeEmbeddingModel,
+                apiKey: settings.activeEmbeddingApiKey
             )
         }
     }

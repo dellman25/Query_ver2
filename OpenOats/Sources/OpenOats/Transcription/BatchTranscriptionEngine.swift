@@ -2,7 +2,7 @@
 import FluidAudio
 import os
 
-private let batchLog = Logger(subsystem: "com.openoats.app", category: "BatchTranscription")
+private let batchLog = Logger(subsystem: "com.query.app", category: "BatchTranscription")
 
 /// Offline two-pass transcription engine that processes recorded CAF files
 /// using a higher-quality model after a meeting ends.

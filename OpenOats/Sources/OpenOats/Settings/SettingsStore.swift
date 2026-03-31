@@ -89,6 +89,61 @@ final class SettingsStore {
         }
     }
 
+    @ObservationIgnored nonisolated(unsafe) private var _lmStudioBaseURL: String
+    var lmStudioBaseURL: String {
+        get { access(keyPath: \.lmStudioBaseURL); return _lmStudioBaseURL }
+        set {
+            withMutation(keyPath: \.lmStudioBaseURL) {
+                _lmStudioBaseURL = newValue
+                defaults.set(newValue, forKey: "lmStudioBaseURL")
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _lmStudioApiKey: String
+    var lmStudioApiKey: String {
+        get { access(keyPath: \.lmStudioApiKey); return _lmStudioApiKey }
+        set {
+            withMutation(keyPath: \.lmStudioApiKey) {
+                _lmStudioApiKey = newValue
+                secretStore.save(key: "lmStudioApiKey", value: newValue)
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _lmStudioLLMModel: String
+    var lmStudioLLMModel: String {
+        get { access(keyPath: \.lmStudioLLMModel); return _lmStudioLLMModel }
+        set {
+            withMutation(keyPath: \.lmStudioLLMModel) {
+                _lmStudioLLMModel = newValue
+                defaults.set(newValue, forKey: "lmStudioLLMModel")
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _lmStudioRealtimeModel: String
+    var lmStudioRealtimeModel: String {
+        get { access(keyPath: \.lmStudioRealtimeModel); return _lmStudioRealtimeModel }
+        set {
+            withMutation(keyPath: \.lmStudioRealtimeModel) {
+                _lmStudioRealtimeModel = newValue
+                defaults.set(newValue, forKey: "lmStudioRealtimeModel")
+            }
+        }
+    }
+
+    @ObservationIgnored nonisolated(unsafe) private var _lmStudioEmbedModel: String
+    var lmStudioEmbedModel: String {
+        get { access(keyPath: \.lmStudioEmbedModel); return _lmStudioEmbedModel }
+        set {
+            withMutation(keyPath: \.lmStudioEmbedModel) {
+                _lmStudioEmbedModel = newValue
+                defaults.set(newValue, forKey: "lmStudioEmbedModel")
+            }
+        }
+    }
+
     @ObservationIgnored nonisolated(unsafe) private var _openAILLMBaseURL: String
     var openAILLMBaseURL: String {
         get { access(keyPath: \.openAILLMBaseURL); return _openAILLMBaseURL }
@@ -620,6 +675,11 @@ final class SettingsStore {
         self._ollamaEmbedModel = defaults.string(forKey: "ollamaEmbedModel") ?? "nomic-embed-text"
         self._mlxBaseURL = defaults.string(forKey: "mlxBaseURL") ?? "http://localhost:8080"
         self._mlxModel = defaults.string(forKey: "mlxModel") ?? "mlx-community/Llama-3.2-3B-Instruct-4bit"
+        self._lmStudioBaseURL = defaults.string(forKey: "lmStudioBaseURL") ?? "http://localhost:1234"
+        self._lmStudioApiKey = storage.secretStore.load(key: "lmStudioApiKey") ?? ""
+        self._lmStudioLLMModel = defaults.string(forKey: "lmStudioLLMModel") ?? ""
+        self._lmStudioRealtimeModel = defaults.string(forKey: "lmStudioRealtimeModel") ?? ""
+        self._lmStudioEmbedModel = defaults.string(forKey: "lmStudioEmbedModel") ?? ""
         self._openAILLMBaseURL = defaults.string(forKey: "openAILLMBaseURL") ?? "http://localhost:4000"
         self._openAILLMApiKey = storage.secretStore.load(key: "openAILLMApiKey") ?? ""
         self._openAILLMModel = defaults.string(forKey: "openAILLMModel") ?? ""
@@ -739,15 +799,85 @@ final class SettingsStore {
         transcriptionModel.displayName
     }
 
+    /// The raw model ID to use for the active LLM provider.
+    var activeLLMModel: String {
+        switch llmProvider {
+        case .openRouter: selectedModel
+        case .ollama: ollamaLLMModel
+        case .mlx: mlxModel
+        case .lmStudio: lmStudioLLMModel
+        case .openAICompatible: openAILLMModel
+        }
+    }
+
+    /// The base URL string for the active LLM provider, when it uses a local OpenAI-compatible server.
+    var activeLLMBaseURLString: String? {
+        switch llmProvider {
+        case .openRouter: nil
+        case .ollama: ollamaBaseURL
+        case .mlx: mlxBaseURL
+        case .lmStudio: lmStudioBaseURL
+        case .openAICompatible: openAILLMBaseURL
+        }
+    }
+
+    /// Optional bearer token for the active LLM provider.
+    var activeLLMApiKey: String? {
+        switch llmProvider {
+        case .openRouter:
+            openRouterApiKey.isEmpty ? nil : openRouterApiKey
+        case .ollama, .mlx:
+            nil
+        case .lmStudio:
+            lmStudioApiKey.isEmpty ? nil : lmStudioApiKey
+        case .openAICompatible:
+            openAILLMApiKey.isEmpty ? nil : openAILLMApiKey
+        }
+    }
+
+    /// Resolved chat completions endpoint for the active LLM provider.
+    var activeLLMChatCompletionsURL: URL? {
+        guard let rawBaseURL = activeLLMBaseURLString else { return nil }
+        return OpenRouterClient.chatCompletionsURL(from: rawBaseURL)
+    }
+
+    /// The raw model ID to use for the active embeddings provider.
+    var activeEmbeddingModel: String {
+        switch embeddingProvider {
+        case .voyageAI: "voyage-4-lite"
+        case .ollama: ollamaEmbedModel
+        case .lmStudio: lmStudioEmbedModel
+        case .openAICompatible: openAIEmbedModel
+        }
+    }
+
+    /// The base URL string for the active embeddings provider, when it is self-hosted.
+    var activeEmbeddingBaseURLString: String? {
+        switch embeddingProvider {
+        case .voyageAI: nil
+        case .ollama: ollamaBaseURL
+        case .lmStudio: lmStudioBaseURL
+        case .openAICompatible: openAIEmbedBaseURL
+        }
+    }
+
+    /// Optional bearer token for the active embeddings provider.
+    var activeEmbeddingApiKey: String? {
+        switch embeddingProvider {
+        case .voyageAI:
+            voyageApiKey.isEmpty ? nil : voyageApiKey
+        case .ollama:
+            nil
+        case .lmStudio:
+            lmStudioApiKey.isEmpty ? nil : lmStudioApiKey
+        case .openAICompatible:
+            openAIEmbedApiKey.isEmpty ? nil : openAIEmbedApiKey
+        }
+    }
+
     /// The model name to display in the UI, respecting the active LLM provider.
     var activeModelDisplay: String {
-        let raw: String
-        switch llmProvider {
-        case .openRouter: raw = selectedModel
-        case .ollama: raw = ollamaLLMModel
-        case .mlx: raw = mlxModel
-        case .openAICompatible: raw = openAILLMModel
-        }
+        let raw = activeLLMModel
         return raw.split(separator: "/").last.map(String.init) ?? raw
     }
 
@@ -757,6 +887,7 @@ final class SettingsStore {
         case .openRouter: return realtimeModel
         case .ollama: return realtimeOllamaModel.isEmpty ? ollamaLLMModel : realtimeOllamaModel
         case .mlx: return mlxModel
+        case .lmStudio: return lmStudioRealtimeModel.isEmpty ? lmStudioLLMModel : lmStudioRealtimeModel
         case .openAICompatible: return openAILLMModel
         }
     }
@@ -886,7 +1017,7 @@ extension SettingsStore {
         let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
 
         let oldAppSupportDir = appSupport.appendingPathComponent("OpenGranola")
-        let newAppSupportDir = appSupport.appendingPathComponent("OpenOats")
+        let newAppSupportDir = appSupport.appendingPathComponent("Query")
 
         if fm.fileExists(atPath: oldAppSupportDir.path) {
             try? fm.createDirectory(at: newAppSupportDir, withIntermediateDirectories: true)
@@ -911,7 +1042,7 @@ extension SettingsStore {
         }
 
         let oldDocDir = home.appendingPathComponent("Documents/OpenGranola")
-        let newDocDir = home.appendingPathComponent("Documents/OpenOats")
+        let newDocDir = home.appendingPathComponent("Documents/Query")
 
         if defaults.string(forKey: "notesFolderPath") == nil {
             if fm.fileExists(atPath: oldDocDir.path) {

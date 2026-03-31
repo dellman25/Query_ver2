@@ -205,6 +205,7 @@ enum LLMProvider: String, CaseIterable, Identifiable {
     case openRouter
     case ollama
     case mlx
+    case lmStudio
     case openAICompatible
 
     var id: String { rawValue }
@@ -214,6 +215,7 @@ enum LLMProvider: String, CaseIterable, Identifiable {
         case .openRouter: "OpenRouter"
         case .ollama: "Ollama"
         case .mlx: "MLX"
+        case .lmStudio: "LM Studio"
         case .openAICompatible: "OpenAI Compatible"
         }
     }
@@ -352,6 +354,7 @@ enum TranscriptionModel: String, CaseIterable, Identifiable {
 enum EmbeddingProvider: String, CaseIterable, Identifiable {
     case voyageAI
     case ollama
+    case lmStudio
     case openAICompatible
 
     var id: String { rawValue }
@@ -360,6 +363,7 @@ enum EmbeddingProvider: String, CaseIterable, Identifiable {
         switch self {
         case .voyageAI: "Voyage AI"
         case .ollama: "Ollama"
+        case .lmStudio: "LM Studio"
         case .openAICompatible: "OpenAI Compatible"
         }
     }

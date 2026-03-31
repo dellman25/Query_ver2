@@ -53,42 +53,19 @@ final class NotesEngine {
             return
         }
 
-        let apiKey: String?
+        let apiKey = settings.activeLLMApiKey
         let baseURL: URL?
-        let model: String
+        let model = settings.activeLLMModel
 
-        switch settings.llmProvider {
-        case .openRouter:
-            apiKey = settings.openRouterApiKey.isEmpty ? nil : settings.openRouterApiKey
+        if settings.llmProvider == .openRouter {
             baseURL = nil
-            model = settings.selectedModel
-        case .ollama:
-            apiKey = nil
-            guard let ollamaURL = OpenRouterClient.chatCompletionsURL(from: settings.ollamaBaseURL) else {
-                error = "Invalid Ollama URL: \(settings.ollamaBaseURL)"
+        } else {
+            guard let resolvedBaseURL = settings.activeLLMChatCompletionsURL else {
+                error = "Invalid \(settings.llmProvider.displayName) URL: \(settings.activeLLMBaseURLString ?? "")"
                 isGenerating = false
                 return
             }
-            baseURL = ollamaURL
-            model = settings.ollamaLLMModel
-        case .mlx:
-            apiKey = nil
-            guard let mlxURL = OpenRouterClient.chatCompletionsURL(from: settings.mlxBaseURL) else {
-                error = "Invalid MLX URL: \(settings.mlxBaseURL)"
-                isGenerating = false
-                return
-            }
-            baseURL = mlxURL
-            model = settings.mlxModel
-        case .openAICompatible:
-            apiKey = settings.openAILLMApiKey.isEmpty ? nil : settings.openAILLMApiKey
-            guard let openAIURL = OpenRouterClient.chatCompletionsURL(from: settings.openAILLMBaseURL) else {
-                error = "Invalid OpenAI Compatible URL: \(settings.openAILLMBaseURL)"
-                isGenerating = false
-                return
-            }
-            baseURL = openAIURL
-            model = settings.openAILLMModel
+            baseURL = resolvedBaseURL
         }
 
         let transcriptText = formatTranscript(transcript)

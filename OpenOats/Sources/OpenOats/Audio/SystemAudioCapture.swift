@@ -9,6 +9,7 @@ import os
 /// Captures system output audio via a Core Audio process tap.
 final class SystemAudioCapture: @unchecked Sendable {
     private let _audioLevel = AudioLevel()
+    private let _didLogFirstBuffer = OSAllocatedUnfairLock<Bool>(uncheckedState: false)
 
     /// Thread-safe audio level (0…1) from the system audio stream.
     var audioLevel: Float { _audioLevel.value }
@@ -24,7 +25,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         uncheckedState: nil
     )
     private let callbackQueue = DispatchQueue(
-        label: "com.openoats.system-audio",
+        label: "com.query.system-audio",
         qos: .userInteractive
     )
 
@@ -44,7 +45,7 @@ final class SystemAudioCapture: @unchecked Sendable {
         let tapUUID = UUID()
 
         let tapDescription = CATapDescription()
-        tapDescription.name = "OpenOats System Audio"
+        tapDescription.name = "Query System Audio"
         tapDescription.uuid = tapUUID
         tapDescription.processes = Self.currentProcessObjectID().map { [$0] } ?? []
         tapDescription.isPrivate = true
@@ -64,7 +65,7 @@ final class SystemAudioCapture: @unchecked Sendable {
 
         let aggregateUID = UUID().uuidString
         let aggregateDescription: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "OpenOats System Audio",
+            kAudioAggregateDeviceNameKey: "Query System Audio",
             kAudioAggregateDeviceUIDKey: aggregateUID,
             kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,
@@ -226,6 +227,28 @@ final class SystemAudioCapture: @unchecked Sendable {
             _audioLevel.value = min(rms * 25, 1.0)
         }
 
+        let shouldLogFirstBuffer = _didLogFirstBuffer.withLock { didLog in
+            if didLog { return false }
+            didLog = true
+            return true
+        }
+        if shouldLogFirstBuffer {
+            // #region agent log
+            agentDebugLog(
+                runId: "initial",
+                hypothesisId: "H3",
+                location: "SystemAudioCapture.handleInputData",
+                message: "System audio first buffer captured",
+                data: [
+                    "frameLength": String(pcmBuffer.frameLength),
+                    "sampleRate": String(format.sampleRate),
+                    "channelCount": String(format.channelCount),
+                    "level": String(_audioLevel.value)
+                ]
+            )
+            // #endregion
+        }
+
         _ = _sysContinuation.withLock { $0?.yield(pcmBuffer) }
     }
 
@@ -341,7 +364,7 @@ final class SystemAudioCapture: @unchecked Sendable {
             case .outputDeviceUIDUnavailable(let status):
                 return "Unable to inspect the system output device (OSStatus \(status))."
             case .tapCreationFailed(let status):
-                return "System audio capture could not start. Enable System Audio Recording for OpenOats in System Settings > Privacy & Security (OSStatus \(status))."
+                return "System audio capture could not start. Enable System Audio Recording for Query in System Settings > Privacy & Security (OSStatus \(status))."
             case .aggregateDeviceCreationFailed(let status):
                 return "Unable to create the Core Audio aggregate device (OSStatus \(status))."
             case .tapFormatUnavailable(let status):

@@ -222,7 +222,7 @@ final class SuggestionEngine {
         switch settings.llmProvider {
         case .openRouter:
             guard !settings.openRouterApiKey.isEmpty else { return }
-        case .ollama, .mlx, .openAICompatible:
+        case .ollama, .mlx, .lmStudio, .openAICompatible:
             guard llmBaseURL(forRealtime: true) != nil else { return }
         }
 
@@ -496,34 +496,15 @@ final class SuggestionEngine {
     // MARK: - LLM Helpers
 
     private var activePrimaryModel: String {
-        switch settings.llmProvider {
-        case .openRouter: settings.selectedModel
-        case .ollama: settings.ollamaLLMModel
-        case .mlx: settings.mlxModel
-        case .openAICompatible: settings.openAILLMModel
-        }
+        settings.activeLLMModel
     }
 
     private var llmApiKey: String? {
-        switch settings.llmProvider {
-        case .openRouter: settings.openRouterApiKey
-        case .ollama: nil
-        case .mlx: nil
-        case .openAICompatible:
-            settings.openAILLMApiKey.isEmpty ? nil : settings.openAILLMApiKey
-        }
+        settings.activeLLMApiKey
     }
 
     private func llmBaseURL(forRealtime: Bool) -> URL? {
-        switch settings.llmProvider {
-        case .openRouter: return nil
-        case .ollama:
-            return OpenRouterClient.chatCompletionsURL(from: settings.ollamaBaseURL)
-        case .mlx:
-            return OpenRouterClient.chatCompletionsURL(from: settings.mlxBaseURL)
-        case .openAICompatible:
-            return OpenRouterClient.chatCompletionsURL(from: settings.openAILLMBaseURL)
-        }
+        settings.llmProvider == .openRouter ? nil : settings.activeLLMChatCompletionsURL
     }
 
     // MARK: - Prompts

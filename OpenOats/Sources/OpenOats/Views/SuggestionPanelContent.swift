@@ -20,7 +20,7 @@ struct SuggestionPanelContent: View {
                 Circle()
                     .fill(isStreaming ? Color.orange : Color.green)
                     .frame(width: 6, height: 6)
-                Text("OpenOats")
+                Text("Query")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                 Spacer()

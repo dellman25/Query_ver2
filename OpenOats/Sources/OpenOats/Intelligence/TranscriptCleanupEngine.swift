@@ -31,7 +31,7 @@ final class TranscriptCleanupEngine {
         set { withMutation(keyPath: \.error) { _error = newValue } }
     }
 
-    private nonisolated static let logger = Logger(subsystem: "com.openoats.app", category: "TranscriptCleanup")
+    private nonisolated static let logger = Logger(subsystem: "com.query.app", category: "TranscriptCleanup")
     private let client = OpenRouterClient()
     private var currentTask: Task<[SessionRecord], Never>?
 
@@ -58,42 +58,21 @@ final class TranscriptCleanupEngine {
         chunksCompleted = 0
         error = nil
 
-        let apiKey: String?
+        let apiKey = settings.activeLLMApiKey
         let baseURL: URL?
         let model: String
 
-        switch settings.llmProvider {
-        case .openRouter:
-            apiKey = settings.openRouterApiKey.isEmpty ? nil : settings.openRouterApiKey
+        if settings.llmProvider == .openRouter {
             baseURL = nil
             model = "openai/gpt-4o-mini"
-        case .ollama:
-            apiKey = nil
-            guard let ollamaURL = OpenRouterClient.chatCompletionsURL(from: settings.ollamaBaseURL) else {
-                error = "Invalid Ollama URL: \(settings.ollamaBaseURL)"
+        } else {
+            guard let resolvedBaseURL = settings.activeLLMChatCompletionsURL else {
+                error = "Invalid \(settings.llmProvider.displayName) URL: \(settings.activeLLMBaseURLString ?? "")"
                 isCleaningUp = false
                 return records
             }
-            baseURL = ollamaURL
-            model = settings.ollamaLLMModel
-        case .mlx:
-            apiKey = nil
-            guard let mlxURL = OpenRouterClient.chatCompletionsURL(from: settings.mlxBaseURL) else {
-                error = "Invalid MLX URL: \(settings.mlxBaseURL)"
-                isCleaningUp = false
-                return records
-            }
-            baseURL = mlxURL
-            model = settings.mlxModel
-        case .openAICompatible:
-            apiKey = settings.openAILLMApiKey.isEmpty ? nil : settings.openAILLMApiKey
-            guard let openAIURL = OpenRouterClient.chatCompletionsURL(from: settings.openAILLMBaseURL) else {
-                error = "Invalid OpenAI Compatible URL: \(settings.openAILLMBaseURL)"
-                isCleaningUp = false
-                return records
-            }
-            baseURL = openAIURL
-            model = settings.openAILLMModel
+            baseURL = resolvedBaseURL
+            model = settings.activeLLMModel
         }
 
         let chunks = Self.chunkRecords(records)

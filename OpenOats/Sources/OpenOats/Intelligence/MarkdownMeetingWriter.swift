@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let writerLogger = Logger(subsystem: "com.openoats.app", category: "MarkdownMeetingWriter")
+private let writerLogger = Logger(subsystem: "com.query.app", category: "MarkdownMeetingWriter")
 
 /// Produces spec-compliant openoats/v1 Markdown files from session data.
 ///

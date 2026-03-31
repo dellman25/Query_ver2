@@ -94,7 +94,7 @@ private struct GeneralSettingsTab: View {
                             }
                         }
 
-                    Text("When enabled, OpenOats monitors microphone activation to detect when a meeting app starts a call. No audio is captured until you accept the notification.")
+                    Text("When enabled, Query monitors microphone activation to detect when a meeting app starts a call. No audio is captured until you accept the notification.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
 
@@ -119,7 +119,7 @@ private struct GeneralSettingsTab: View {
                             .font(.headline)
 
                         VStack(alignment: .leading, spacing: 10) {
-                            Label("OpenOats watches for microphone activation by meeting apps (Zoom, Teams, FaceTime, etc.)", systemImage: "mic")
+                            Label("Query watches for microphone activation by meeting apps (Zoom, Teams, FaceTime, etc.)", systemImage: "mic")
                             Label("Only activation status is checked. No audio is captured or recorded until you accept.", systemImage: "lock.shield")
                             Label("When a meeting is detected, you get a macOS notification to start transcribing.", systemImage: "bell")
                             Label("You can always dismiss the notification or mark it as \"not a meeting\".", systemImage: "hand.raised")
@@ -309,7 +309,7 @@ private struct TranscriptionSettingsTab: View {
 
                         ZStack(alignment: .topLeading) {
                             if settings.transcriptionCustomVocabulary.isEmpty {
-                                Text("One term per line. Optional aliases: OpenOats: open oats")
+                                Text("One term per line. Optional aliases: Query: query app")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.quaternary)
                                     .padding(.top, 6)
@@ -414,6 +414,24 @@ private struct IntelligenceSettingsTab: View {
 
                         TextField("Model", text: $settings.mlxModel, prompt: Text("e.g. mlx-community/Llama-3.2-3B-Instruct-4bit"))
                             .font(.system(size: 12, design: .monospaced))
+                    case .lmStudio:
+                        TextField("LM Studio URL", text: $settings.lmStudioBaseURL, prompt: Text("http://localhost:1234"))
+                            .font(.system(size: 12, design: .monospaced))
+
+                        SecureField("API Key (optional)", text: $settings.lmStudioApiKey)
+                            .font(.system(size: 12, design: .monospaced))
+
+                        LMStudioModelField(
+                            modelName: $settings.lmStudioLLMModel,
+                            baseURL: settings.lmStudioBaseURL,
+                            apiKey: settings.lmStudioApiKey,
+                            placeholder: "Load a chat model in LM Studio"
+                        )
+
+                        Text("Query lists whichever models LM Studio currently exposes at `/v1/models`. Leave the API key blank unless you enabled bearer auth.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     case .openAICompatible:
                         TextField("Endpoint URL", text: $settings.openAILLMBaseURL, prompt: Text("http://localhost:4000"))
                             .font(.system(size: 12, design: .monospaced))
@@ -445,6 +463,24 @@ private struct IntelligenceSettingsTab: View {
                             TextField("Ollama URL", text: $settings.ollamaBaseURL, prompt: Text("http://localhost:11434"))
                                 .font(.system(size: 12, design: .monospaced))
                         }
+                    case .lmStudio:
+                        TextField("LM Studio URL", text: $settings.lmStudioBaseURL, prompt: Text("http://localhost:1234"))
+                            .font(.system(size: 12, design: .monospaced))
+
+                        SecureField("API Key (optional)", text: $settings.lmStudioApiKey)
+                            .font(.system(size: 12, design: .monospaced))
+
+                        LMStudioModelField(
+                            modelName: $settings.lmStudioEmbedModel,
+                            baseURL: settings.lmStudioBaseURL,
+                            apiKey: settings.lmStudioApiKey,
+                            placeholder: "Load an embedding model in LM Studio"
+                        )
+
+                        Text("Embedding models are discovered from the same LM Studio server and model list.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     case .openAICompatible:
                         TextField("Endpoint URL", text: $settings.openAIEmbedBaseURL, prompt: Text("http://localhost:8080"))
                             .font(.system(size: 12, design: .monospaced))
@@ -476,6 +512,16 @@ private struct IntelligenceSettingsTab: View {
                         Text("Optional Ollama model for real-time suggestions. Uses your main model if empty.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                    case .lmStudio:
+                        LMStudioModelField(
+                            modelName: $settings.lmStudioRealtimeModel,
+                            baseURL: settings.lmStudioBaseURL,
+                            apiKey: settings.lmStudioApiKey,
+                            placeholder: "Uses the main LM Studio model if empty"
+                        )
+                        Text("Optional LM Studio model for real-time suggestions. Uses your main model if empty.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     case .mlx, .openAICompatible:
                         Text("Real-time suggestions currently reuse the active provider model for this provider.")
                             .font(.system(size: 11))
@@ -484,7 +530,7 @@ private struct IntelligenceSettingsTab: View {
                 }
 
                 Section("Knowledge Base") {
-                    Text("Optional. Point this to a folder of notes, docs, or reference material (.md, .txt). During meetings, OpenOats searches this folder to surface relevant context and talking points.")
+                    Text("Optional. Point this to a folder of notes, docs, or reference material (.md, .txt). During interviews, Query searches this folder to surface relevant context.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
 
@@ -745,7 +791,7 @@ private struct IntegrationsSettingsTab: View {
 
                         SecureField("Signing Secret (optional)", text: $settings.webhookSecret)
                             .font(.system(size: 12, design: .monospaced))
-                        Text("If set, each request includes an X-OpenOats-Signature header (HMAC-SHA256) for payload verification.")
+                        Text("If set, each request includes an X-Query-Signature header (HMAC-SHA256) for payload verification.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }

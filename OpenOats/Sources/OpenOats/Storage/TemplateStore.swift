@@ -19,7 +19,7 @@ final class TemplateStore {
             dir = rootDirectory
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            dir = appSupport.appendingPathComponent("OpenOats", isDirectory: true)
+            dir = appSupport.appendingPathComponent("Query", isDirectory: true)
         }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         storageURL = dir.appendingPathComponent("templates.json")

@@ -46,9 +46,9 @@ final class AppContainer {
                 appSupportDirectory: FileManager.default.urls(
                     for: .applicationSupportDirectory,
                     in: .userDomainMask
-                ).first!.appendingPathComponent("OpenOats", isDirectory: true),
+                ).first!.appendingPathComponent("Query", isDirectory: true),
                 notesDirectory: FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Documents/OpenOats", isDirectory: true)
+                    .appendingPathComponent("Documents/Query", isDirectory: true)
             )
             let settings = AppSettings()
             let coordinator = AppCoordinator()
@@ -64,16 +64,16 @@ final class AppContainer {
             )
 
         case .uiTest(let scenario):
-            let runID = environment["OPENOATS_UI_TEST_RUN_ID"] ?? UUID().uuidString
+            let runID = environment["QUERY_UI_TEST_RUN_ID"] ?? UUID().uuidString
             let root = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-                .appendingPathComponent("OpenOatsUITests", isDirectory: true)
+                .appendingPathComponent("QueryUITests", isDirectory: true)
                 .appendingPathComponent(runID, isDirectory: true)
             let appSupportDirectory = root.appendingPathComponent("ApplicationSupport", isDirectory: true)
             let notesDirectory = root.appendingPathComponent("Notes", isDirectory: true)
             try? FileManager.default.createDirectory(at: appSupportDirectory, withIntermediateDirectories: true)
             try? FileManager.default.createDirectory(at: notesDirectory, withIntermediateDirectories: true)
 
-            let suiteName = "com.openoats.uitests.\(runID)"
+            let suiteName = "com.query.uitests.\(runID)"
             let defaults = UserDefaults(suiteName: suiteName) ?? .standard
             defaults.removePersistentDomain(forName: suiteName)
             defaults.set(true, forKey: "hasCompletedOnboarding")
@@ -245,11 +245,11 @@ final class AppContainer {
     }
 
     private static func runtimeMode(from environment: [String: String]) -> AppRuntimeMode {
-        guard environment["OPENOATS_UI_TEST"] == "1" else {
+        guard environment["QUERY_UI_TEST"] == "1" else {
             return .live
         }
 
-        let scenario = UITestScenario(rawValue: environment["OPENOATS_UI_SCENARIO"] ?? "")
+        let scenario = UITestScenario(rawValue: environment["QUERY_UI_SCENARIO"] ?? "")
             ?? .launchSmoke
         return .uiTest(scenario)
     }

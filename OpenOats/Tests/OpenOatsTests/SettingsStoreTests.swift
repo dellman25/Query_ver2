@@ -124,6 +124,44 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.mlxModel, "mlx-community/Llama-3.2-3B-Instruct-4bit")
     }
 
+    func testDefaultLMStudioSettings() {
+        let store = makeStore()
+        XCTAssertEqual(store.lmStudioBaseURL, "http://localhost:1234")
+        XCTAssertEqual(store.lmStudioLLMModel, "")
+        XCTAssertEqual(store.lmStudioRealtimeModel, "")
+        XCTAssertEqual(store.lmStudioEmbedModel, "")
+    }
+
+    func testLMStudioSettingsRoundTrip() {
+        let store = makeStore()
+        store.lmStudioBaseURL = "http://127.0.0.1:1234"
+        store.lmStudioLLMModel = "qwen/qwen3-8b"
+        store.lmStudioRealtimeModel = "qwen/qwen3-4b"
+        store.lmStudioEmbedModel = "nomic-embed-text-v1.5"
+
+        XCTAssertEqual(store.lmStudioBaseURL, "http://127.0.0.1:1234")
+        XCTAssertEqual(store.lmStudioLLMModel, "qwen/qwen3-8b")
+        XCTAssertEqual(store.lmStudioRealtimeModel, "qwen/qwen3-4b")
+        XCTAssertEqual(store.lmStudioEmbedModel, "nomic-embed-text-v1.5")
+    }
+
+    func testLMStudioAPIKeyPersistsViaSecretStore() {
+        final class SecretBox: @unchecked Sendable {
+            var values: [String: String] = [:]
+        }
+        let secrets = SecretBox()
+        let secretStore = AppSecretStore(
+            loadValue: { key in secrets.values[key] },
+            saveValue: { key, value in secrets.values[key] = value }
+        )
+
+        let store1 = makeStore(secretStore: secretStore)
+        store1.lmStudioApiKey = "lm-studio-token"
+
+        let store2 = makeStore(secretStore: secretStore)
+        XCTAssertEqual(store2.lmStudioApiKey, "lm-studio-token")
+    }
+
     func testDefaultEnableTranscriptRefinement() {
         let store = makeStore()
         XCTAssertFalse(store.enableTranscriptRefinement)
@@ -309,6 +347,60 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.activeModelDisplay, "Llama-3.2-3B-Instruct-4bit")
     }
 
+    func testActiveModelDisplayLMStudio() {
+        let store = makeStore()
+        store.llmProvider = .lmStudio
+        store.lmStudioLLMModel = "lmstudio-community/qwen3-8b-instruct"
+        XCTAssertEqual(store.activeModelDisplay, "qwen3-8b-instruct")
+    }
+
+    func testActiveLLMSettingsResolveForLMStudio() {
+        let store = makeStore()
+        store.llmProvider = .lmStudio
+        store.lmStudioBaseURL = "http://127.0.0.1:1234/v1"
+        store.lmStudioApiKey = "lm-secret"
+        store.lmStudioLLMModel = "lmstudio-community/qwen3-8b-instruct"
+
+        XCTAssertEqual(store.activeLLMModel, "lmstudio-community/qwen3-8b-instruct")
+        XCTAssertEqual(store.activeLLMBaseURLString, "http://127.0.0.1:1234/v1")
+        XCTAssertEqual(store.activeLLMApiKey, "lm-secret")
+        XCTAssertEqual(
+            store.activeLLMChatCompletionsURL?.absoluteString,
+            "http://127.0.0.1:1234/v1/chat/completions"
+        )
+    }
+
+    func testActiveEmbeddingSettingsResolveForLMStudio() {
+        let store = makeStore()
+        store.embeddingProvider = .lmStudio
+        store.lmStudioBaseURL = "http://localhost:1234"
+        store.lmStudioApiKey = "embed-secret"
+        store.lmStudioEmbedModel = "text-embedding-nomic"
+
+        XCTAssertEqual(store.activeEmbeddingModel, "text-embedding-nomic")
+        XCTAssertEqual(store.activeEmbeddingBaseURLString, "http://localhost:1234")
+        XCTAssertEqual(store.activeEmbeddingApiKey, "embed-secret")
+    }
+
+    func testLMStudioRealtimeModelFallsBackToPrimaryModel() {
+        let store = makeStore()
+        store.llmProvider = .lmStudio
+        store.lmStudioLLMModel = "lmstudio-community/qwen3-8b-instruct"
+
+        XCTAssertEqual(store.activeRealtimeModel, "lmstudio-community/qwen3-8b-instruct")
+        XCTAssertEqual(store.activeRealtimeModelDisplay, "qwen3-8b-instruct")
+    }
+
+    func testLMStudioRealtimeModelUsesOverrideWhenPresent() {
+        let store = makeStore()
+        store.llmProvider = .lmStudio
+        store.lmStudioLLMModel = "lmstudio-community/qwen3-8b-instruct"
+        store.lmStudioRealtimeModel = "lmstudio-community/qwen3-4b-instruct"
+
+        XCTAssertEqual(store.activeRealtimeModel, "lmstudio-community/qwen3-4b-instruct")
+        XCTAssertEqual(store.activeRealtimeModelDisplay, "qwen3-4b-instruct")
+    }
+
     // MARK: - Persistence via UserDefaults
 
     func testPersistenceAcrossInstances() {
@@ -317,15 +409,23 @@ final class SettingsStoreTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
 
         let store1 = makeStore(defaults: defaults)
-        store1.llmProvider = .mlx
+        store1.llmProvider = .lmStudio
         store1.silenceTimeoutMinutes = 42
         store1.transcriptionModel = .qwen3ASR06B
+        store1.lmStudioBaseURL = "http://localhost:4321"
+        store1.lmStudioLLMModel = "local-model"
+        store1.lmStudioRealtimeModel = "fast-local-model"
+        store1.lmStudioEmbedModel = "local-embed-model"
 
         // Create a second store from the same defaults
         let store2 = makeStore(defaults: defaults)
-        XCTAssertEqual(store2.llmProvider, .mlx)
+        XCTAssertEqual(store2.llmProvider, .lmStudio)
         XCTAssertEqual(store2.silenceTimeoutMinutes, 42)
         XCTAssertEqual(store2.transcriptionModel, .qwen3ASR06B)
+        XCTAssertEqual(store2.lmStudioBaseURL, "http://localhost:4321")
+        XCTAssertEqual(store2.lmStudioLLMModel, "local-model")
+        XCTAssertEqual(store2.lmStudioRealtimeModel, "fast-local-model")
+        XCTAssertEqual(store2.lmStudioEmbedModel, "local-embed-model")
     }
 
     // MARK: - AppSettings Typealias Compatibility

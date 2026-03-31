@@ -3,7 +3,7 @@ import Foundation
 import Observation
 import os
 
-private let logger = Logger(subsystem: "com.openoats.app", category: "MeetingDetection")
+private let logger = Logger(subsystem: "com.query.app", category: "MeetingDetection")
 
 /// One-shot events emitted by the detection controller for consumption by the coordinator.
 enum DetectionEvent: Sendable {
@@ -324,6 +324,19 @@ final class MeetingDetectionController {
 
     private func handleMeetingDetected(app: MeetingApp?) async {
         detectedApp = app
+        // #region agent log
+        agentDebugLog(
+            runId: "initial",
+            hypothesisId: "H4",
+            location: "MeetingDetectionController.handleMeetingDetected",
+            message: "Meeting detection fired",
+            data: [
+                "appName": app?.name ?? "nil",
+                "bundleID": app?.bundleID ?? "nil",
+                "isSessionActive": String(isSessionActive())
+            ]
+        )
+        // #endregion
 
         // Don't prompt if already recording
         guard !isSessionActive() else { return }

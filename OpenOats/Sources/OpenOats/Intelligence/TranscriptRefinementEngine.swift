@@ -96,44 +96,22 @@ actor TranscriptRefinementEngine {
 
         // Read settings on MainActor
         let provider = await MainActor.run { settings.llmProvider }
-        let openRouterKey = await MainActor.run { settings.openRouterApiKey }
-        let ollamaURL = await MainActor.run { settings.ollamaBaseURL }
-        let ollamaModel = await MainActor.run { settings.ollamaLLMModel }
-        let mlxURL = await MainActor.run { settings.mlxBaseURL }
-        let mlxModelName = await MainActor.run { settings.mlxModel }
-        let openAILLMURL = await MainActor.run { settings.openAILLMBaseURL }
-        let openAILLMKey = await MainActor.run { settings.openAILLMApiKey }
-        let openAILLMModelName = await MainActor.run { settings.openAILLMModel }
+        let activeApiKey = await MainActor.run { settings.activeLLMApiKey }
+        let activeBaseURL = await MainActor.run { settings.activeLLMChatCompletionsURL }
+        let activeModel = await MainActor.run { settings.activeLLMModel }
 
-        switch provider {
-        case .openRouter:
-            apiKey = openRouterKey.isEmpty ? nil : openRouterKey
+        if provider == .openRouter {
+            apiKey = activeApiKey
             baseURL = nil
             model = refinementModel
-        case .ollama:
-            apiKey = nil
-            guard let url = OpenRouterClient.chatCompletionsURL(from: ollamaURL) else {
+        } else {
+            guard let activeBaseURL else {
                 await markFailed(utterance.id)
                 return
             }
-            baseURL = url
-            model = ollamaModel
-        case .mlx:
-            apiKey = nil
-            guard let url = OpenRouterClient.chatCompletionsURL(from: mlxURL) else {
-                await markFailed(utterance.id)
-                return
-            }
-            baseURL = url
-            model = mlxModelName
-        case .openAICompatible:
-            apiKey = openAILLMKey.isEmpty ? nil : openAILLMKey
-            guard let url = OpenRouterClient.chatCompletionsURL(from: openAILLMURL) else {
-                await markFailed(utterance.id)
-                return
-            }
-            baseURL = url
-            model = openAILLMModelName
+            apiKey = activeApiKey
+            baseURL = activeBaseURL
+            model = activeModel
         }
 
         let messages: [OpenRouterClient.Message] = [

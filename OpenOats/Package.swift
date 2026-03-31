@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "OpenOats",
+    name: "Query",
     platforms: [.macOS(.v15)],
     products: [
         .library(
@@ -11,7 +11,7 @@ let package = Package(
             targets: ["OpenOatsKit"]
         ),
         .executable(
-            name: "OpenOats",
+            name: "Query",
             targets: ["OpenOatsAppExecutable"]
         ),
         .executable(

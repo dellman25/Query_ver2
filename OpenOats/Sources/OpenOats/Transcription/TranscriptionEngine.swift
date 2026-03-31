@@ -7,7 +7,7 @@ import os
 /// Simple file logger for diagnostics — writes to /tmp/openoats.log
 func diagLog(_ msg: String) {
     let line = "\(Date()): \(msg)\n"
-    let path = "/tmp/openoats.log"
+    let path = "/tmp/query.log"
     if let fh = FileHandle(forWritingAtPath: path) {
         fh.seekToEndOfFile()
         fh.write(line.data(using: .utf8)!)
@@ -218,6 +218,26 @@ final class TranscriptionEngine {
         }
 
         guard await ensureMicrophonePermission() else { return }
+        let modeLabel: String = {
+            switch mode {
+            case .live: "live"
+            case .scripted: "scripted"
+            }
+        }()
+        // #region agent log
+        agentDebugLog(
+            runId: "initial",
+            hypothesisId: "H1",
+            location: "TranscriptionEngine.start",
+            message: "Transcription engine passed permission gate",
+            data: [
+                "model": transcriptionModel.rawValue,
+                "locale": locale.identifier,
+                "inputDeviceID": String(inputDeviceID),
+                "mode": modeLabel
+            ]
+        )
+        // #endregion
 
         isRunning = true
 
@@ -714,10 +734,28 @@ final class TranscriptionEngine {
         do {
             sysStreams = try await systemCapture.bufferStream()
             diagLog("[ENGINE-5] system audio capture started OK")
+            // #region agent log
+            agentDebugLog(
+                runId: "initial",
+                hypothesisId: "H2",
+                location: "TranscriptionEngine.startSystemAudioStream",
+                message: "System audio capture started",
+                data: [:]
+            )
+            // #endregion
             clearSystemAudioErrorIfPresent()
         } catch {
             let msg = "Failed to start system audio: \(error.localizedDescription)"
             diagLog("[ENGINE-5-FAIL] \(msg)")
+            // #region agent log
+            agentDebugLog(
+                runId: "initial",
+                hypothesisId: "H2",
+                location: "TranscriptionEngine.startSystemAudioStream",
+                message: "System audio capture failed",
+                data: ["error": error.localizedDescription]
+            )
+            // #endregion
             lastError = msg
             return
         }

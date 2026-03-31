@@ -37,7 +37,7 @@ struct SettingsStorage {
             defaults: defaults,
             secretStore: .keychain,
             defaultNotesDirectory: FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Documents/OpenOats"),
+                .appendingPathComponent("Documents/Query"),
             runMigrations: true
         )
     }
@@ -49,7 +49,7 @@ typealias AppSettingsStorage = SettingsStorage
 // MARK: - Keychain Helper
 
 enum KeychainHelper {
-    private static let service = "com.openoats.app"
+    private static let service = "com.query.app"
 
     static func save(key: String, value: String) {
         guard let data = value.data(using: .utf8) else { return }
