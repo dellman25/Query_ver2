@@ -65,7 +65,29 @@ struct SessionFinalizeMetadata: Sendable {
     let engine: String?
     let templateSnapshot: TemplateSnapshot?
     let utterances: [Utterance]
-    let warnings: [SessionWarning] = []
+    let warnings: [SessionWarning]
+
+    init(
+        endedAt: Date,
+        utteranceCount: Int,
+        title: String?,
+        language: String?,
+        meetingApp: String?,
+        engine: String?,
+        templateSnapshot: TemplateSnapshot?,
+        utterances: [Utterance],
+        warnings: [SessionWarning] = []
+    ) {
+        self.endedAt = endedAt
+        self.utteranceCount = utteranceCount
+        self.title = title
+        self.language = language
+        self.meetingApp = meetingApp
+        self.engine = engine
+        self.templateSnapshot = templateSnapshot
+        self.utterances = utterances
+        self.warnings = warnings
+    }
 }
 
 /// Full session detail for loading.

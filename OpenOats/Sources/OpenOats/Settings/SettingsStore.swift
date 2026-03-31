@@ -992,7 +992,8 @@ final class SettingsStore {
             hideFromScreenShareByDefault: hideFromScreenShare,
             temporaryVisibilityEnabled: temporaryScreenshotVisibilityEnabled
         )
-        for window in NSApp.windows {
+        guard let app = NSApp else { return }
+        for window in app.windows {
             window.sharingType = type
         }
     }

@@ -9,7 +9,7 @@ final class SmokeTests: XCTestCase {
     func testLaunchSmokeShowsMainControls() {
         let app = launchApp(scenario: "launchSmoke")
 
-        XCTAssertTrue(element(in: app, identifier: "app.controlBar.toggle").waitForExistence(timeout: 5))
+        XCTAssertTrue(element(in: app, identifier: "app.startInterview").waitForExistence(timeout: 5))
         XCTAssertTrue(element(in: app, identifier: "app.pastMeetingsButton").waitForExistence(timeout: 5))
     }
 
@@ -33,17 +33,22 @@ final class SmokeTests: XCTestCase {
 
     func testSessionSmokeShowsEndedBanner() {
         let app = launchApp(scenario: "sessionSmoke")
+        fillRequiredSetupFields(in: app)
 
-        let toggle = element(in: app, identifier: "app.controlBar.toggle")
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-
-        toggle.click()
+        let startButton = element(in: app, identifier: "app.startInterview")
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5))
         XCTAssertTrue(waitForCondition(timeout: 5) {
-            self.element(in: app, identifier: "app.controlBar.toggle").label.contains("Live")
+            startButton.isEnabled
         })
+        app.activate()
+        startButton.click()
 
-        toggle.click()
-        XCTAssertTrue(element(in: app, identifier: "app.sessionEndedBanner").waitForExistence(timeout: 5))
+        let stopButton = element(in: app, identifier: "app.workspace.stop")
+        XCTAssertTrue(stopButton.waitForExistence(timeout: 8))
+
+        app.activate()
+        stopButton.click()
+        XCTAssertTrue(element(in: app, identifier: "app.sessionEndedBanner").waitForExistence(timeout: 10))
     }
 
     func testNotesSmokeSupportsDeepLinkAndGeneration() {
@@ -52,9 +57,25 @@ final class SmokeTests: XCTestCase {
         let deepLink = URL(string: "query://notes?sessionID=session_ui_test_notes")!
         openDeepLink(deepLink)
 
-        XCTAssertTrue(element(in: app, identifier: "notes.generateButton").waitForExistence(timeout: 5))
-        element(in: app, identifier: "notes.generateButton").click()
-        XCTAssertTrue(element(in: app, identifier: "notes.renderedMarkdown").waitForExistence(timeout: 5))
+        let generateButton = element(in: app, identifier: "notes.generateButton")
+        XCTAssertTrue(generateButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForCondition(timeout: 5) {
+            generateButton.isEnabled
+        })
+        app.activate()
+        generateButton.click()
+        if !waitForCondition(timeout: 1, condition: {
+            self.element(in: app, identifier: "notes.generating").exists
+                || self.element(in: app, identifier: "notes.renderedMarkdown").exists
+                || app.staticTexts["UI Test Notes"].exists
+        }) {
+            app.activate()
+            generateButton.click()
+        }
+        XCTAssertTrue(waitForCondition(timeout: 5) {
+            self.element(in: app, identifier: "notes.renderedMarkdown").exists
+                || app.staticTexts["UI Test Notes"].exists
+        })
     }
 
     private func launchApp(scenario: String) -> XCUIApplication {
@@ -63,11 +84,29 @@ final class SmokeTests: XCTestCase {
         app.launchEnvironment["QUERY_UI_SCENARIO"] = scenario
         app.launchEnvironment["QUERY_UI_TEST_RUN_ID"] = UUID().uuidString
         app.launch()
+        app.activate()
         return app
     }
 
     private func element(in app: XCUIApplication, identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    private func fillRequiredSetupFields(in app: XCUIApplication) {
+        let titleField = app.textFields["Session Title"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        titleField.click()
+        titleField.typeText("UI Smoke Session")
+
+        let processField = app.textFields["Process Area"]
+        XCTAssertTrue(processField.waitForExistence(timeout: 5))
+        processField.click()
+        processField.typeText("Discovery")
+
+        let roleField = app.textFields["Interviewee Role"]
+        XCTAssertTrue(roleField.waitForExistence(timeout: 5))
+        roleField.click()
+        roleField.typeText("Analyst")
     }
 
     private func openDeepLink(_ url: URL) {

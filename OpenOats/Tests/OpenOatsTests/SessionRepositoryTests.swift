@@ -397,7 +397,7 @@ final class SessionRepositoryTests: XCTestCase {
         )
 
         let text = await repo.exportPlainText(sessionID: sessionID)
-        XCTAssertTrue(text.contains("OpenOats"))
+        XCTAssertTrue(text.contains("Query"))
         XCTAssertTrue(text.contains("You: Hello there"))
         XCTAssertTrue(text.contains("Them: Hi back"))
 

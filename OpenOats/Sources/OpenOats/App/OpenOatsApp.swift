@@ -119,7 +119,19 @@ extension OpenOatsRootApp {
     static let mainWindowID = "main"
 
     private func openNotesWindow() {
+        NSApp.setActivationPolicy(.regular)
         openWindow(id: "notes")
+        NSApp.activate(ignoringOtherApps: true)
+        Task { @MainActor in
+            for _ in 0..<10 {
+                if let window = NSApp.windows.first(where: { $0.title == "Notes" }) {
+                    window.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
     }
 
     private var isBatchEngineBusy: Bool {

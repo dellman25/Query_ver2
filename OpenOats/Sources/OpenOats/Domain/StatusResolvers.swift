@@ -40,6 +40,7 @@ struct CaptureStatusResolver {
     }
 }
 
+@MainActor
 struct AIStatusResolver {
     static func resolve(
         settings: AppSettings,

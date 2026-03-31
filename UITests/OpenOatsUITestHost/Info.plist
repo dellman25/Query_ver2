@@ -22,9 +22,10 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.openoats.ui-test-host</string>
+            <string>com.query.ui-test-host</string>
             <key>CFBundleURLSchemes</key>
             <array>
+                <string>query</string>
                 <string>openoats</string>
             </array>
         </dict>

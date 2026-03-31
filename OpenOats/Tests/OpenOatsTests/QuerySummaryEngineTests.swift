@@ -160,9 +160,9 @@ final class QuerySummaryEngineTests: XCTestCase {
 
         let url = await repository.exportSummaryMarkdown(sessionID: "session_export")
 
-        XCTAssertNotNil(url)
-        let content = try String(contentsOf: XCTUnwrap(url), encoding: .utf8)
+        let resolvedURL = try XCTUnwrap(url)
+        let content = try String(contentsOf: resolvedURL, encoding: .utf8)
         XCTAssertTrue(content.contains("# Export Session"))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: XCTUnwrap(url).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: resolvedURL.path))
     }
 }

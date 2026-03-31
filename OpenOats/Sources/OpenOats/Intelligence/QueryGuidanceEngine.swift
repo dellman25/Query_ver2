@@ -247,6 +247,9 @@ private extension QueryGuidanceEngine {
         if signals.reporting >= 2 {
             return .reportingReview
         }
+        if signals.isProceduralHeavy {
+            return .proceduralNarration
+        }
         if signals.control >= 2 {
             return .controlDiscussion
         }

@@ -63,7 +63,7 @@ actor LLMService {
         let upstream: AsyncThrowingStream<String, Error>
         switch backend {
         case .openAICompatible(let apiKey, let model, let baseURL):
-            upstream = openAIClient.streamCompletion(
+            upstream = await openAIClient.streamCompletion(
                 apiKey: apiKey,
                 model: model,
                 messages: messages,
@@ -71,7 +71,7 @@ actor LLMService {
                 baseURL: baseURL
             )
         case .gemini(let apiKey, let model):
-            upstream = geminiClient.streamCompletion(
+            upstream = await geminiClient.streamCompletion(
                 apiKey: apiKey,
                 model: model,
                 messages: messages,
@@ -158,7 +158,8 @@ actor LLMService {
                 baseURL: nil
             )
         case .ollama, .mlx, .lmStudio, .openAICompatible:
-            guard let baseURL = await MainActor.run({ settings.activeLLMChatCompletionsURL }) else {
+            let baseURL = await MainActor.run { settings.activeLLMChatCompletionsURL }
+            guard let baseURL else {
                 throw LLMServiceError.notConfigured("Invalid \(provider.displayName) endpoint.")
             }
             return .openAICompatible(
